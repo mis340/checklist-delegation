@@ -1,42 +1,46 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
-import LoginPage from "./pages/LoginPage"
-import AdminDashboard from "./pages/admin/Dashboard"
-import AdminAssignTask from "./pages/admin/AssignTask"
+import { useState, useEffect } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+import LoginPage from "./pages/LoginPage";
+import AdminDashboard from "./pages/admin/Dashboard";
+import AdminAssignTask from "./pages/admin/AssignTask";
 // import AllTasks from "./pages/admin/AllTasks"
-import DataPage from "./pages/admin/DataPage"
-import AdminDataPage from "./pages/admin/admin-data-page"
-import AccountDataPage from "./pages/delegation"
-import QuickTask from "./pages/QuickTask"
-import AdminDelegationTask from "./pages/delegation-data"
-import "./index.css"
-import License from "./pages/License"
-import TrainingVideo from "./pages/TrainingVideo"
-import Calendar from "./pages/Calendar"
+import DataPage from "./pages/admin/DataPage";
+import AdminDataPage from "./pages/admin/admin-data-page";
+import AccountDataPage from "./pages/delegation";
+import QuickTask from "./pages/QuickTask";
+import AdminDelegationTask from "./pages/delegation-data";
+import "./index.css";
+import License from "./pages/License";
+import TrainingVideo from "./pages/TrainingVideo";
+import Calendar from "./pages/Calendar";
+import HolidayList from "./pages/admin/HolidayList";
 
 // Auth wrapper component to protect routes
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
-  const username = sessionStorage.getItem("username")
-  const userRole = sessionStorage.getItem("role")
+  const username = sessionStorage.getItem("username");
+  const userRole = sessionStorage.getItem("role");
 
   // If no user is logged in, redirect to login
   if (!username) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace />;
   }
 
   // If this is an admin-only route and user is not admin, redirect to tasks
   if (allowedRoles.length > 0 && !allowedRoles.includes(userRole)) {
-    return <Navigate to="/dashboard/admin" replace />
+    return <Navigate to="/dashboard/admin" replace />;
   }
 
-  return children
-}
+  return children;
+};
 
 function App() {
-  
-
   return (
     <Router>
       <Routes>
@@ -47,7 +51,10 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
 
         {/* Dashboard redirect */}
-        <Route path="/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
+        <Route
+          path="/dashboard"
+          element={<Navigate to="/dashboard/admin" replace />}
+        />
 
         {/* Admin & User Dashboard route */}
         <Route
@@ -66,7 +73,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
 
         {/* Assign Task route - only for admin */}
         <Route
@@ -105,11 +111,20 @@ function App() {
             </ProtectedRoute>
           }
         />
-         <Route
+        <Route
           path="/dashboard/calendar"
           element={
             <ProtectedRoute>
               <Calendar />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/dashboard/holiday"
+          element={
+            <ProtectedRoute>
+              <HolidayList />
             </ProtectedRoute>
           }
         />
@@ -143,19 +158,49 @@ function App() {
         />
 
         {/* Backward compatibility redirects */}
-        <Route path="/admin/*" element={<Navigate to="/dashboard/admin" replace />} />
-        <Route path="/admin/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
-        <Route path="/admin/quick" element={<Navigate to="/dashboard/quick-task" replace />} />
-        <Route path="/admin/assign-task" element={<Navigate to="/dashboard/assign-task" replace />} />
-        <Route path="/admin/delegation-task" element={<Navigate to="/dashboard/delegation-task" replace />} />
-        <Route path="/admin/data/:category" element={<Navigate to="/dashboard/data/:category" replace />} />
-        <Route path="/admin/calendar" element={<Navigate to="/dashboard/calendar" replace/>}/>
-        <Route path="/admin/license" element={<Navigate to="/dashboard/license" replace />} />
-        <Route path="/admin/traning-video" element={<Navigate to="/dashboard/traning-video" replace />} />
-        <Route path="/user/*" element={<Navigate to="/dashboard/admin" replace />} />
+        <Route
+          path="/admin/*"
+          element={<Navigate to="/dashboard/admin" replace />}
+        />
+        <Route
+          path="/admin/dashboard"
+          element={<Navigate to="/dashboard/admin" replace />}
+        />
+        <Route
+          path="/admin/quick"
+          element={<Navigate to="/dashboard/quick-task" replace />}
+        />
+        <Route
+          path="/admin/assign-task"
+          element={<Navigate to="/dashboard/assign-task" replace />}
+        />
+        <Route
+          path="/admin/delegation-task"
+          element={<Navigate to="/dashboard/delegation-task" replace />}
+        />
+        <Route
+          path="/admin/data/:category"
+          element={<Navigate to="/dashboard/data/:category" replace />}
+        />
+        <Route
+          path="/admin/calendar"
+          element={<Navigate to="/dashboard/calendar" replace />}
+        />
+        <Route
+          path="/admin/license"
+          element={<Navigate to="/dashboard/license" replace />}
+        />
+        <Route
+          path="/admin/traning-video"
+          element={<Navigate to="/dashboard/traning-video" replace />}
+        />
+        <Route
+          path="/user/*"
+          element={<Navigate to="/dashboard/admin" replace />}
+        />
       </Routes>
     </Router>
-  )
+  );
 }
 
-export default App
+export default App;

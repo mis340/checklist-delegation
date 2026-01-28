@@ -568,13 +568,10 @@
 //   );
 // }
 
-
-
-
 "use client";
 
 import { useState, useEffect } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { href, Link, useLocation, useNavigate } from "react-router-dom";
 import {
   CheckSquare,
   ClipboardList,
@@ -592,10 +589,12 @@ import {
   KeyRound,
   Video,
   Calendar,
+  CalendarDays,     // ✅ use this for Holiday List
   CalendarCheck,
   CirclePlus,
-  BookmarkCheck
+  BookmarkCheck,
 } from "lucide-react";
+
 
 export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
   const location = useLocation();
@@ -606,61 +605,61 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
   const [username, setUsername] = useState("");
   const [userRole, setUserRole] = useState("");
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [headerAnimatedText, setHeaderAnimatedText] = useState("")
-  const [showAnimation, setShowAnimation] = useState(false)
+  const [headerAnimatedText, setHeaderAnimatedText] = useState("");
+  const [showAnimation, setShowAnimation] = useState(false);
   // Authentication check + user info + header animation
   useEffect(() => {
-    const storedUsername = sessionStorage.getItem("username")
-    const storedRole = sessionStorage.getItem("role")
+    const storedUsername = sessionStorage.getItem("username");
+    const storedRole = sessionStorage.getItem("role");
 
     if (!storedUsername) {
-      navigate("/login")
-      return
+      navigate("/login");
+      return;
     }
 
-    setUsername(storedUsername)
-    setUserRole(storedRole || "user")
+    setUsername(storedUsername);
+    setUserRole(storedRole || "user");
 
     // Show welcome text animation once on mount
-    const hasSeenAnimation = sessionStorage.getItem("hasSeenWelcomeAnimation")
+    const hasSeenAnimation = sessionStorage.getItem("hasSeenWelcomeAnimation");
     if (!hasSeenAnimation) {
-      setShowAnimation(true)
-      sessionStorage.setItem("hasSeenWelcomeAnimation", "true")
+      setShowAnimation(true);
+      sessionStorage.setItem("hasSeenWelcomeAnimation", "true");
 
-      let currentIndex = 0
-      const welcomeText = `Welcome, ${storedUsername}`
+      let currentIndex = 0;
+      const welcomeText = `Welcome, ${storedUsername}`;
 
       const typingInterval = setInterval(() => {
         if (currentIndex <= welcomeText.length) {
-          setAnimatedText(welcomeText.slice(0, currentIndex))
-          currentIndex++
+          setAnimatedText(welcomeText.slice(0, currentIndex));
+          currentIndex++;
         } else {
-          clearInterval(typingInterval)
-          setShowAnimation(false)
+          clearInterval(typingInterval);
+          setShowAnimation(false);
           // Start header animation after typing animation finishes
-          startHeaderAnimation(storedUsername)
+          startHeaderAnimation(storedUsername);
         }
-      }, 80)
+      }, 80);
 
-      return () => clearInterval(typingInterval)
+      return () => clearInterval(typingInterval);
     } else {
       // Show header text immediately without animation
-      setHeaderAnimatedText(`Welcome, ${storedUsername}`)
+      setHeaderAnimatedText(`Welcome, ${storedUsername}`);
     }
-  }, [navigate])
+  }, [navigate]);
 
   // Header typing animation function
   function startHeaderAnimation(name) {
-    let currentIndex = 0
-    const headerText = `Welcome, ${name}`
+    let currentIndex = 0;
+    const headerText = `Welcome, ${name}`;
     const headerInterval = setInterval(() => {
       if (currentIndex <= headerText.length) {
-        setHeaderAnimatedText(headerText.slice(0, currentIndex))
-        currentIndex++
+        setHeaderAnimatedText(headerText.slice(0, currentIndex));
+        currentIndex++;
       } else {
-        clearInterval(headerInterval)
+        clearInterval(headerInterval);
       }
-    }, 80)
+    }, 80);
   }
 
   // Handle logout
@@ -681,73 +680,92 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
   const getAccessibleDepartments = () => {
     const userRole = sessionStorage.getItem("role") || "user";
     return dataCategories.filter(
-      (cat) => !cat.showFor || cat.showFor.includes(userRole)
+      (cat) => !cat.showFor || cat.showFor.includes(userRole),
     );
   };
 
   const accessibleDepartments = getAccessibleDepartments();
 
   // Update the routes array based on user role
-  const routes = [
-    {
-      href: "/dashboard/admin",
-      label: "Dashboard",
-      icon: Database,
-      active: location.pathname === "/dashboard/admin",
-      showFor: ["admin", "user"],
-    },
-    {
-      href: "/dashboard/quick-task",
-      label: "Quick Task Checklist",
-      icon: Zap,
-      active: location.pathname === "/dashboard/quick-task",
-      showFor: ["admin"],
-    },
-    {
-      href: "/dashboard/assign-task",
-      label: "Assign Task",
-      icon: CheckSquare,
-      active: location.pathname === "/dashboard/assign-task",
-      showFor: ["admin"],
-    },
-    {
-      href: "/dashboard/delegation",
-      label: "Delegation",
-      icon: ClipboardList,
-      active: location.pathname === "/dashboard/delegation",
-      showFor: ["admin", "user"],
-    },
-    ...accessibleDepartments.map((category) => ({
-      href: category.link || `/dashboard/data/${category.id}`,
-      label: category.name,
-      icon: FileText,
-      active:
-        location.pathname ===
-        (category.link || `/dashboard/data/${category.id}`),
-      showFor: ["admin", "user"],
-    })),
-    {
-      href: "/dashboard/calendar",
-      label: "Calendar",
-      icon: Calendar,
-      active: location.pathname === "/dashboard/calendar",
-      showFor: ["admin", "user"],
-    },
-    {
-      href: "/dashboard/license",
-      label: "License",
-      icon: KeyRound,
-      active: location.pathname === "/dashboard/license",
-      showFor: ["admin", "user"],
-    },
-    {
-      href: "/dashboard/traning-video",
-      label: "Training Video",
-      icon: Video,
-      active: location.pathname === "/dashboard/traning-video",
-      showFor: ["admin", "user"],
-    },
-  ];
+const routes = [
+  {
+    href: "/dashboard/admin",
+    label: "Dashboard",
+    icon: Database,
+    active: location.pathname === "/dashboard/admin",
+    showFor: ["admin", "user"],
+  },
+
+  {
+    href: "/dashboard/quick-task",
+    label: "Quick Task Checklist",
+    icon: Zap,
+    active: location.pathname === "/dashboard/quick-task",
+    showFor: ["admin"],
+  },
+
+  {
+    href: "/dashboard/assign-task",
+    label: "Assign Task",
+    icon: CheckSquare,
+    active: location.pathname === "/dashboard/assign-task",
+    showFor: ["admin"],
+  },
+
+  {
+    href: "/dashboard/delegation",
+    label: "Delegation",
+    icon: ClipboardList,
+    active: location.pathname === "/dashboard/delegation",
+    showFor: ["admin", "user"],
+  },
+
+  ...accessibleDepartments.map((category) => ({
+    href: category.link || `/dashboard/data/${category.id}`,
+    label: category.name,
+    icon: FileText,
+    active:
+      location.pathname ===
+      (category.link || `/dashboard/data/${category.id}`),
+    showFor: ["admin", "user"],
+  })),
+
+  {
+    href: "/dashboard/calendar",
+    label: "Calendar",
+    icon: Calendar,
+    active: location.pathname === "/dashboard/calendar",
+    showFor: ["admin", "user"],
+  },
+
+
+
+  {
+    href: "/dashboard/holiday",
+    label: "Holiday List",
+    icon: CalendarDays,
+    active: location.pathname === "/dashboard/holiday",
+    showFor: ["admin", "user"],
+  },
+,
+
+  {
+    href: "/dashboard/license",
+    label: "License",
+    icon: KeyRound,
+    active: location.pathname === "/dashboard/license",
+    showFor: ["admin", "user"],
+  },
+
+  {
+    href: "/dashboard/traning-video",
+    label: "Training Video",
+    icon: Video,
+    active: location.pathname === "/dashboard/traning-video",
+    showFor: ["admin", "user"],
+  },
+];
+
 
   // Filter routes based on user role
   const getAccessibleRoutes = () => {
@@ -792,7 +810,10 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
       {/* Sidebar for desktop */}
       <aside className="hidden w-64 flex-shrink-0 border-r border-blue-200 bg-white md:flex md:flex-col">
         <div className="flex h-14 items-center border-b border-blue-200 px-4 bg-gradient-to-r from-blue-100 to-purple-100">
-          <Link to="/dashboard/admin" className="flex items-center gap-2 font-semibold text-blue-700">
+          <Link
+            to="/dashboard/admin"
+            className="flex items-center gap-2 font-semibold text-blue-700"
+          >
             <ClipboardList className="h-5 w-5 text-blue-600" />
             <span>Checklist & Delegation</span>
           </Link>
@@ -805,10 +826,11 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                   <div>
                     <button
                       onClick={() => setIsDataSubmenuOpen(!isDataSubmenuOpen)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
+                      className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                        route.active
                           ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                           : "text-gray-700 hover:bg-blue-50"
-                        }`}
+                      }`}
                     >
                       <div className="flex items-center gap-3">
                         <route.icon
@@ -827,11 +849,17 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                         {accessibleDepartments.map((category) => (
                           <li key={category.id}>
                             <Link
-                              to={category.link || `/dashboard/data/${category.id}`}
-                              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${location.pathname === (category.link || `/dashboard/data/${category.id}`)
+                              to={
+                                category.link ||
+                                `/dashboard/data/${category.id}`
+                              }
+                              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                                location.pathname ===
+                                (category.link ||
+                                  `/dashboard/data/${category.id}`)
                                   ? "bg-blue-50 text-blue-700 font-medium"
                                   : "text-gray-600 hover:bg-blue-50 hover:text-blue-700"
-                                }`}
+                              }`}
                               onClick={() => setIsMobileMenuOpen(false)}
                             >
                               {category.name}
@@ -844,10 +872,11 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                 ) : (
                   <Link
                     to={route.href}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                      route.active
                         ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                         : "text-gray-700 hover:bg-blue-50"
-                      }`}
+                    }`}
                   >
                     <route.icon
                       className={`h-4 w-4 ${route.active ? "text-blue-600" : ""}`}
@@ -966,11 +995,14 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                     {route.submenu ? (
                       <div>
                         <button
-                          onClick={() => setIsDataSubmenuOpen(!isDataSubmenuOpen)}
-                          className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
+                          onClick={() =>
+                            setIsDataSubmenuOpen(!isDataSubmenuOpen)
+                          }
+                          className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                            route.active
                               ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                               : "text-gray-700 hover:bg-blue-50"
-                            }`}
+                          }`}
                         >
                           <div className="flex items-center gap-3">
                             <route.icon
@@ -989,11 +1021,17 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                             {accessibleDepartments.map((category) => (
                               <li key={category.id}>
                                 <Link
-                                  to={category.link || `/dashboard/data/${category.id}`}
-                                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${location.pathname === (category.link || `/dashboard/data/${category.id}`)
+                                  to={
+                                    category.link ||
+                                    `/dashboard/data/${category.id}`
+                                  }
+                                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                                    location.pathname ===
+                                    (category.link ||
+                                      `/dashboard/data/${category.id}`)
                                       ? "bg-blue-50 text-blue-700 font-medium"
                                       : "text-gray-600 hover:bg-blue-50 hover:text-blue-700"
-                                    }`}
+                                  }`}
                                   onClick={() => setIsMobileMenuOpen(false)}
                                 >
                                   {category.name}
@@ -1006,10 +1044,11 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                     ) : (
                       <Link
                         to={route.href}
-                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
+                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                          route.active
                             ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                             : "text-gray-700 hover:bg-blue-50"
-                          }`}
+                        }`}
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
                         <route.icon
@@ -1032,7 +1071,8 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-blue-700">
-                      {username || "User"} {userRole === "admin" ? "(Admin)" : ""}
+                      {username || "User"}{" "}
+                      {userRole === "admin" ? "(Admin)" : ""}
                     </p>
                     <p className="text-xs text-blue-600">
                       {username
@@ -1105,21 +1145,23 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
         <header className="flex h-16 items-center justify-between border-b-2 border-blue-200 bg-gradient-to-r from-blue-50 via-purple-50 to-blue-50 px-4 md:px-6 shadow-md">
           <div className="flex md:hidden w-8"></div>
           <div className="flex flex-col gap-1">
-
             {headerAnimatedText && (
               <div className="relative">
                 <p className="text-lg md:text-xl font-['Poppins',_'Segoe_UI',_sans-serif] tracking-wide">
                   <span className="font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 animate-gradient">
                     {headerAnimatedText}
                   </span>
-                  <span className="inline-block animate-bounce ml-2 text-yellow-500">👋</span>
+                  <span className="inline-block animate-bounce ml-2 text-yellow-500">
+                    👋
+                  </span>
                 </p>
               </div>
             )}
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gradient-to-br from-blue-50 to-purple-50 pb-20">
-          {children}</main>
+          {children}
+        </main>
 
         {/* Mobile Footer Tabs - Only visible on mobile */}
         <div className="fixed bottom-0 left-0 right-0 md:hidden bg-white border-t border-blue-200 shadow-lg z-50">
@@ -1127,10 +1169,11 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
           <nav className="flex justify-around py-2">
             <Link
               to="/dashboard/admin"
-              className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/admin"
+              className={`flex flex-col items-center text-sm p-2 transition-colors ${
+                location.pathname === "/dashboard/admin"
                   ? "text-blue-600 font-semibold"
                   : "text-gray-600 hover:text-blue-500"
-                }`}
+              }`}
               aria-label="Dashboard"
             >
               <Home className="w-6 h-6 mb-1" />
@@ -1139,10 +1182,11 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
 
             <Link
               to="/dashboard/data/sales"
-              className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/data/sales"
+              className={`flex flex-col items-center text-sm p-2 transition-colors ${
+                location.pathname === "/dashboard/data/sales"
                   ? "text-blue-600 font-semibold"
                   : "text-gray-600 hover:text-blue-500"
-                }`}
+              }`}
               aria-label="Checklist"
             >
               <CalendarCheck className="w-6 h-6 mb-1" />
@@ -1153,10 +1197,11 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
             {userRole === "admin" && (
               <Link
                 to="/dashboard/assign-task"
-                className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/assign-task"
+                className={`flex flex-col items-center text-sm p-2 transition-colors ${
+                  location.pathname === "/dashboard/assign-task"
                     ? "text-blue-600 font-semibold"
                     : "text-gray-600 hover:text-blue-500"
-                  }`}
+                }`}
                 aria-label="Assign Task"
               >
                 <CirclePlus className="w-6 h-6 mb-1" />
@@ -1166,10 +1211,11 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
 
             <Link
               to="/dashboard/delegation"
-              className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/delegation"
+              className={`flex flex-col items-center text-sm p-2 transition-colors ${
+                location.pathname === "/dashboard/delegation"
                   ? "text-blue-600 font-semibold"
                   : "text-gray-600 hover:text-blue-500"
-                }`}
+              }`}
               aria-label="Delegation"
             >
               <BookmarkCheck className="w-6 h-6 mb-1" />
