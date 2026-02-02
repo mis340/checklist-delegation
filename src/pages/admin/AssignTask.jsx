@@ -661,167 +661,193 @@ export default function AssignTask() {
   };
 
   // UPDATED: handleSubmit function with first-time user check logic
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
 
-    try {
-      if (generatedTasks.length === 0) {
-        alert("Please generate tasks first by clicking Preview Generated Tasks");
-        setIsSubmitting(false);
-        return;
-      }
+  try {
+    if (generatedTasks.length === 0) {
+      alert("Please generate tasks first by clicking Preview Generated Tasks");
+      setIsSubmitting(false);
+      return;
+    }
 
-      // Validate that department is selected
-      if (!formData.department || formData.department.trim() === "") {
-        alert("Please select a department before submitting tasks");
-        setIsSubmitting(false);
-        return;
-      }
+    // Validate that department is selected
+    if (!formData.department || formData.department.trim() === "") {
+      alert("Please select a department before submitting tasks");
+      setIsSubmitting(false);
+      return;
+    }
 
-      // Helper function to check if this is the first task for the user
-      const isFirstTaskForUser = async (doerName) => {
-        try {
-          const sheetId = "1pZx7O0Zfz52Gj-jon_UELVvueGcKPV2u0ONVq1IU3EU";
-          const sheetName = "Checklist";
+    // Helper function to check if this is the first task for the user
+    const isFirstTaskForUser = async (doerName) => {
+      try {
+        const sheetId = "1pZx7O0Zfz52Gj-jon_UELVvueGcKPV2u0ONVq1IU3EU";
+        const sheetName = "Checklist";
 
-          const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(
-            sheetName
-          )}`;
+        const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(
+          sheetName
+        )}`;
 
-          const response = await fetch(url);
-          if (!response.ok) {
-            console.log("Checklist sheet not found - treating as first task");
-            return true;
-          }
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.log("Checklist sheet not found - treating as first task");
+          return true;
+        }
 
-          const text = await response.text();
-          const jsonStart = text.indexOf("{");
-          const jsonEnd = text.lastIndexOf("}");
-          const jsonString = text.substring(jsonStart, jsonEnd + 1);
-          const data = JSON.parse(jsonString);
+        const text = await response.text();
+        const jsonStart = text.indexOf("{");
+        const jsonEnd = text.lastIndexOf("}");
+        const jsonString = text.substring(jsonStart, jsonEnd + 1);
+        const data = JSON.parse(jsonString);
 
-          if (!data.table || !data.table.rows || data.table.rows.length <= 1) {
-            console.log("Checklist sheet is empty - treating as first task");
-            return true;
-          }
+        if (!data.table || !data.table.rows || data.table.rows.length <= 1) {
+          console.log("Checklist sheet is empty - treating as first task");
+          return true;
+        }
 
-          // Check if doer name exists in column E (index 4) - "name" column
-          for (let i = 1; i < data.table.rows.length; i++) {
-            const row = data.table.rows[i];
-            if (row.c && row.c[4] && row.c[4].v) {
-              const existingDoer = row.c[4].v.toString().trim();
-              if (existingDoer === doerName.trim()) {
-                console.log(`User "${doerName}" found in Checklist - NOT first task`);
-                return false;
-              }
+        // Check if doer name exists in column E (index 4) - "name" column
+        for (let i = 1; i < data.table.rows.length; i++) {
+          const row = data.table.rows[i];
+          if (row.c && row.c[4] && row.c[4].v) {
+            const existingDoer = row.c[4].v.toString().trim();
+            if (existingDoer === doerName.trim()) {
+              console.log(`User "${doerName}" found in Checklist - NOT first task`);
+              return false;
             }
           }
-
-          console.log(`User "${doerName}" NOT found in Checklist - IS first task`);
-          return true;
-        } catch (error) {
-          console.error("Error checking first task:", error);
-          return true;
         }
-      };
 
-      // Determine the sheet(s) based on frequency and first-time user check
-      let submitToSheets = [];
-
-      if (formData.frequency === "one-time") {
-        submitToSheets = ["DELEGATION"];
-        console.log("One-time task - submitting to DELEGATION only");
-      } else {
-        const isFirstTask = await isFirstTaskForUser(formData.doer);
-        if (isFirstTask) {
-          submitToSheets = ["Unique", "Checklist"];
-          console.log("First task for user - submitting to both Unique and Checklist");
-        } else {
-          submitToSheets = ["Unique"];
-          console.log("Existing user - submitting to Unique only");
-        }
+        console.log(`User "${doerName}" NOT found in Checklist - IS first task`);
+        return true;
+      } catch (error) {
+        console.error("Error checking first task:", error);
+        return true;
       }
+    };
 
-      console.log(`Selected department: ${formData.department}`);
-      console.log(`Doer: ${formData.doer}`);
-      console.log(`Target sheets: ${submitToSheets.join(', ')}`);
+    // Determine the sheet(s) based on frequency
+    let submitToSheets = [];
 
-      // Submit to each target sheet
-      for (const sheetName of submitToSheets) {
-        // Get the last task ID from the current sheet (only for sheets that need it)
-        const needsTaskId = sheetName !== "Checklist";
-        const lastTaskId = needsTaskId ? await getLastTaskId(sheetName) : 0;
-        let nextTaskId = lastTaskId + 1;
-
-        // Prepare all tasks data for batch insertion
-        const tasksData = generatedTasks.map((task, index) => {
-          const baseData = {
-            timestamp: getCurrentTimestamp(),
-            department: formData.department,
-            givenBy: formData.givenBy,
-            name: formData.doer,
-            description: task.description,
-            startDate: task.dueDate,
-            freq: task.frequency,
-            enableReminders: task.enableReminders ? "Yes" : "No",
-            requireAttachment: task.requireAttachment ? "Yes" : "No"
-          };
-
-          // Only add taskId for sheets other than Checklist
-          if (needsTaskId) {
-            return {
-              ...baseData,
-              taskId: (nextTaskId + index).toString()
-            };
-          }
-
-          return baseData;
-        });
-
-        console.log(`Submitting ${tasksData.length} tasks to ${sheetName} sheet`);
-
-        // Submit all tasks in one batch to Google Sheets
-        const formPayload = new FormData();
-        formPayload.append("sheetName", sheetName);
-        formPayload.append("action", "insert");
-        formPayload.append("batchInsert", "true");
-        formPayload.append("rowData", JSON.stringify(tasksData));
-
-        await fetch(
-          "https://script.google.com/macros/s/AKfycbyaBCq6ZKHhOZBXRp9qw3hqrXh_aIOPvIHh_G41KtzPovhjl-UjEgj75Ok6gwJhrPOX/exec",
-          {
-            method: "POST",
-            body: formPayload,
-            mode: "no-cors",
-          }
-        );
-      }
-
-      const sheetNames = submitToSheets.join(' and ');
-      alert(`Successfully submitted ${generatedTasks.length} task${generatedTasks.length !== 1 ? 's' : ''} to ${sheetNames} sheet${submitToSheets.length > 1 ? 's' : ''}!`);
-
-      // Reset form
-      setFormData({
-        department: "",
-        givenBy: "",
-        doer: "",
-        description: "",
-        frequency: "one-time",
-        enableReminders: true,
-        requireAttachment: false
-      });
-      setSelectedDate(null);
-      setTime("09:00");
-      setGeneratedTasks([]);
-      setAccordionOpen(false);
-    } catch (error) {
-      console.error("Submission error:", error);
-      alert("Failed to assign tasks. Please try again.");
-    } finally {
-      setIsSubmitting(false);
+    if (formData.frequency === "one-time") {
+      // One-time task: ONLY to DELEGATION
+      submitToSheets = ["DELEGATION"];
+      console.log("One-time task - submitting to DELEGATION only");
+    } else {
+      // Recurring task: ALWAYS to BOTH Unique and Checklist
+      submitToSheets = ["Unique", "Checklist"];
+      console.log("Recurring task - submitting to BOTH Unique and Checklist");
     }
-  };
+
+    console.log(`Selected department: ${formData.department}`);
+    console.log(`Doer: ${formData.doer}`);
+    console.log(`Target sheets: ${submitToSheets.join(', ')}`);
+
+    // Submit to each target sheet
+    const submissionPromises = [];
+    
+    for (const sheetName of submitToSheets) {
+      // Checklist sheet doesn't need taskId
+      const needsTaskId = sheetName !== "Checklist";
+      let nextTaskId = 0;
+
+      if (needsTaskId) {
+        const lastTaskId = await getLastTaskId(sheetName);
+        nextTaskId = lastTaskId + 1;
+      }
+
+      // Prepare all tasks data for batch insertion
+      const tasksData = generatedTasks.map((task, index) => {
+        const baseData = {
+          timestamp: getCurrentTimestamp(),
+          department: formData.department,
+          givenBy: formData.givenBy,
+          name: formData.doer,
+          description: task.description,
+          startDate: task.dueDate,
+          freq: task.frequency,
+          enableReminders: task.enableReminders ? "Yes" : "No",
+          requireAttachment: task.requireAttachment ? "Yes" : "No"
+        };
+
+        // Add taskId only for sheets that need it
+        if (needsTaskId) {
+          return {
+            ...baseData,
+            taskId: (nextTaskId + index).toString()
+          };
+        }
+
+        return baseData;
+      });
+
+      console.log(`Submitting ${tasksData.length} tasks to ${sheetName} sheet`);
+
+      // Create a promise for each sheet submission
+      const submissionPromise = (async () => {
+        try {
+          const formPayload = new FormData();
+          formPayload.append("sheetName", sheetName);
+          formPayload.append("action", "insert");
+          formPayload.append("batchInsert", "true");
+          formPayload.append("rowData", JSON.stringify(tasksData));
+
+          await fetch(
+            "https://script.google.com/macros/s/AKfycbyaBCq6ZKHhOZBXRp9qw3hqrXh_aIOPvIHh_G41KtzPovhjl-UjEgj75Ok6gwJhrPOX/exec",
+            {
+              method: "POST",
+              body: formPayload,
+              mode: "no-cors",
+            }
+          );
+          
+          console.log(`Successfully submitted to ${sheetName}`);
+          return { sheetName, success: true };
+        } catch (error) {
+          console.error(`Error submitting to ${sheetName}:`, error);
+          return { sheetName, success: false };
+        }
+      })();
+
+      submissionPromises.push(submissionPromise);
+    }
+
+    // Wait for all submissions to complete
+    const results = await Promise.all(submissionPromises);
+    
+    // Check which submissions were successful
+    const successfulSheets = results
+      .filter(result => result.success)
+      .map(result => result.sheetName);
+
+    if (successfulSheets.length > 0) {
+      const sheetNames = successfulSheets.join(' and ');
+      alert(`Successfully submitted ${generatedTasks.length} task${generatedTasks.length !== 1 ? 's' : ''} to ${sheetNames} sheet${successfulSheets.length > 1 ? 's' : ''}!`);
+    } else {
+      alert("Failed to submit tasks. Please try again.");
+    }
+
+    // Reset form
+    setFormData({
+      department: "",
+      givenBy: "",
+      doer: "",
+      description: "",
+      frequency: "one-time",
+      enableReminders: true,
+      requireAttachment: false
+    });
+    setSelectedDate(null);
+    setTime("09:00");
+    setGeneratedTasks([]);
+    setAccordionOpen(false);
+  } catch (error) {
+    console.error("Submission error:", error);
+    alert("Failed to assign tasks. Please try again.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
   // Helper function to format date for display in preview
   const formatDateForDisplay = (dateTimeStr) => {
     // dateTimeStr is in format "DD/MM/YYYY HH:MM:SS"
