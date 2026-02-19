@@ -593,6 +593,7 @@ import {
   CalendarCheck,
   CirclePlus,
   BookmarkCheck,
+  Settings,
 } from "lucide-react";
 
 
@@ -687,84 +688,91 @@ export default function AdminLayout({ children, darkMode, toggleDarkMode }) {
   const accessibleDepartments = getAccessibleDepartments();
 
   // Update the routes array based on user role
-const routes = [
-  {
-    href: "/dashboard/admin",
-    label: "Dashboard",
-    icon: Database,
-    active: location.pathname === "/dashboard/admin",
-    showFor: ["admin", "user"],
-  },
+  const routes = [
+    {
+      href: "/dashboard/admin",
+      label: "Dashboard",
+      icon: Database,
+      active: location.pathname === "/dashboard/admin",
+      showFor: ["admin", "user"],
+    },
 
-  {
-    href: "/dashboard/quick-task",
-    label: "Quick Task Checklist",
-    icon: Zap,
-    active: location.pathname === "/dashboard/quick-task",
-    showFor: ["admin"],
-  },
+    {
+      href: "/dashboard/quick-task",
+      label: "Quick Task Checklist",
+      icon: Zap,
+      active: location.pathname === "/dashboard/quick-task",
+      showFor: ["admin"],
+    },
 
-  {
-    href: "/dashboard/assign-task",
-    label: "Assign Task",
-    icon: CheckSquare,
-    active: location.pathname === "/dashboard/assign-task",
-    showFor: ["admin"],
-  },
+    {
+      href: "/dashboard/assign-task",
+      label: "Assign Task",
+      icon: CheckSquare,
+      active: location.pathname === "/dashboard/assign-task",
+      showFor: ["admin"],
+    },
 
-  {
-    href: "/dashboard/delegation",
-    label: "Delegation",
-    icon: ClipboardList,
-    active: location.pathname === "/dashboard/delegation",
-    showFor: ["admin", "user"],
-  },
+    {
+      href: "/dashboard/delegation",
+      label: "Delegation",
+      icon: ClipboardList,
+      active: location.pathname === "/dashboard/delegation",
+      showFor: ["admin", "user"],
+    },
 
-  ...accessibleDepartments.map((category) => ({
-    href: category.link || `/dashboard/data/${category.id}`,
-    label: category.name,
-    icon: FileText,
-    active:
-      location.pathname ===
-      (category.link || `/dashboard/data/${category.id}`),
-    showFor: ["admin", "user"],
-  })),
+    ...accessibleDepartments.map((category) => ({
+      href: category.link || `/dashboard/data/${category.id}`,
+      label: category.name,
+      icon: FileText,
+      active:
+        location.pathname ===
+        (category.link || `/dashboard/data/${category.id}`),
+      showFor: ["admin", "user"],
+    })),
 
-  {
-    href: "/dashboard/calendar",
-    label: "Calendar",
-    icon: Calendar,
-    active: location.pathname === "/dashboard/calendar",
-    showFor: ["admin", "user"],
-  },
+    {
+      href: "/dashboard/calendar",
+      label: "Calendar",
+      icon: Calendar,
+      active: location.pathname === "/dashboard/calendar",
+      showFor: ["admin", "user"],
+    },
 
 
 
-  {
-    href: "/dashboard/holiday",
-    label: "Holiday List",
-    icon: CalendarDays,
-    active: location.pathname === "/dashboard/holiday",
-    showFor: ["admin", "user"],
-  },
-,
+    {
+      href: "/dashboard/holiday",
+      label: "Holiday List",
+      icon: CalendarDays,
+      active: location.pathname === "/dashboard/holiday",
+      showFor: ["admin", "user"],
+    },
+    ,
 
-  {
-    href: "/dashboard/license",
-    label: "License",
-    icon: KeyRound,
-    active: location.pathname === "/dashboard/license",
-    showFor: ["admin", "user"],
-  },
+    {
+      href: "/dashboard/license",
+      label: "License",
+      icon: KeyRound,
+      active: location.pathname === "/dashboard/license",
+      showFor: ["admin", "user"],
+    },
 
-  {
-    href: "/dashboard/traning-video",
-    label: "Training Video",
-    icon: Video,
-    active: location.pathname === "/dashboard/traning-video",
-    showFor: ["admin", "user"],
-  },
-];
+    {
+      href: "/dashboard/traning-video",
+      label: "Training Video",
+      icon: Video,
+      active: location.pathname === "/dashboard/traning-video",
+      showFor: ["admin", "user"],
+    },
+    {
+      href: "/dashboard/settings",
+      label: "Settings",
+      icon: Settings,
+      active: location.pathname === "/dashboard/settings",
+      showFor: ["admin"],
+    },
+  ];
 
 
   // Filter routes based on user role
@@ -826,11 +834,10 @@ const routes = [
                   <div>
                     <button
                       onClick={() => setIsDataSubmenuOpen(!isDataSubmenuOpen)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                        route.active
+                      className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
                           ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                           : "text-gray-700 hover:bg-blue-50"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-3">
                         <route.icon
@@ -853,13 +860,12 @@ const routes = [
                                 category.link ||
                                 `/dashboard/data/${category.id}`
                               }
-                              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-                                location.pathname ===
-                                (category.link ||
-                                  `/dashboard/data/${category.id}`)
+                              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${location.pathname ===
+                                  (category.link ||
+                                    `/dashboard/data/${category.id}`)
                                   ? "bg-blue-50 text-blue-700 font-medium"
                                   : "text-gray-600 hover:bg-blue-50 hover:text-blue-700"
-                              }`}
+                                }`}
                               onClick={() => setIsMobileMenuOpen(false)}
                             >
                               {category.name}
@@ -872,11 +878,10 @@ const routes = [
                 ) : (
                   <Link
                     to={route.href}
-                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                      route.active
+                    className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
                         ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                         : "text-gray-700 hover:bg-blue-50"
-                    }`}
+                      }`}
                   >
                     <route.icon
                       className={`h-4 w-4 ${route.active ? "text-blue-600" : ""}`}
@@ -998,11 +1003,10 @@ const routes = [
                           onClick={() =>
                             setIsDataSubmenuOpen(!isDataSubmenuOpen)
                           }
-                          className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                            route.active
+                          className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
                               ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                               : "text-gray-700 hover:bg-blue-50"
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center gap-3">
                             <route.icon
@@ -1025,13 +1029,12 @@ const routes = [
                                     category.link ||
                                     `/dashboard/data/${category.id}`
                                   }
-                                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
-                                    location.pathname ===
-                                    (category.link ||
-                                      `/dashboard/data/${category.id}`)
+                                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${location.pathname ===
+                                      (category.link ||
+                                        `/dashboard/data/${category.id}`)
                                       ? "bg-blue-50 text-blue-700 font-medium"
                                       : "text-gray-600 hover:bg-blue-50 hover:text-blue-700"
-                                  }`}
+                                    }`}
                                   onClick={() => setIsMobileMenuOpen(false)}
                                 >
                                   {category.name}
@@ -1044,11 +1047,10 @@ const routes = [
                     ) : (
                       <Link
                         to={route.href}
-                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                          route.active
+                        className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${route.active
                             ? "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700"
                             : "text-gray-700 hover:bg-blue-50"
-                        }`}
+                          }`}
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
                         <route.icon
@@ -1169,11 +1171,10 @@ const routes = [
           <nav className="flex justify-around py-2">
             <Link
               to="/dashboard/admin"
-              className={`flex flex-col items-center text-sm p-2 transition-colors ${
-                location.pathname === "/dashboard/admin"
+              className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/admin"
                   ? "text-blue-600 font-semibold"
                   : "text-gray-600 hover:text-blue-500"
-              }`}
+                }`}
               aria-label="Dashboard"
             >
               <Home className="w-6 h-6 mb-1" />
@@ -1182,11 +1183,10 @@ const routes = [
 
             <Link
               to="/dashboard/data/sales"
-              className={`flex flex-col items-center text-sm p-2 transition-colors ${
-                location.pathname === "/dashboard/data/sales"
+              className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/data/sales"
                   ? "text-blue-600 font-semibold"
                   : "text-gray-600 hover:text-blue-500"
-              }`}
+                }`}
               aria-label="Checklist"
             >
               <CalendarCheck className="w-6 h-6 mb-1" />
@@ -1197,11 +1197,10 @@ const routes = [
             {userRole === "admin" && (
               <Link
                 to="/dashboard/assign-task"
-                className={`flex flex-col items-center text-sm p-2 transition-colors ${
-                  location.pathname === "/dashboard/assign-task"
+                className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/assign-task"
                     ? "text-blue-600 font-semibold"
                     : "text-gray-600 hover:text-blue-500"
-                }`}
+                  }`}
                 aria-label="Assign Task"
               >
                 <CirclePlus className="w-6 h-6 mb-1" />
@@ -1211,11 +1210,10 @@ const routes = [
 
             <Link
               to="/dashboard/delegation"
-              className={`flex flex-col items-center text-sm p-2 transition-colors ${
-                location.pathname === "/dashboard/delegation"
+              className={`flex flex-col items-center text-sm p-2 transition-colors ${location.pathname === "/dashboard/delegation"
                   ? "text-blue-600 font-semibold"
                   : "text-gray-600 hover:text-blue-500"
-              }`}
+                }`}
               aria-label="Delegation"
             >
               <BookmarkCheck className="w-6 h-6 mb-1" />

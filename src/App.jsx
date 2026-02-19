@@ -21,6 +21,7 @@ import License from "./pages/License";
 import TrainingVideo from "./pages/TrainingVideo";
 import Calendar from "./pages/Calendar";
 import HolidayList from "./pages/admin/HolidayList";
+import Settings from "./pages/Settings";
 
 // Auth wrapper component to protect routes
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
@@ -138,6 +139,14 @@ function App() {
           }
         />
 
+        <Route
+          path="/dashboard/settings"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/dashboard/traning-video"
           element={

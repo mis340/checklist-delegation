@@ -959,7 +959,12 @@ function AccountDataPage() {
         // ✅ ONLY ADD IF COLUMN K IS EMPTY/NULL
         const isColumnKEmpty = isEmpty(columnKValue);
 
-        if (isColumnKEmpty && isEmpty(columnPValue)) {
+        // Filter out Leave tasks (Frontend: Check Column N / Index 13)
+        const remarksVal = rowValues[13];
+        const isLeave = remarksVal && String(remarksVal).toLowerCase().includes("leave");
+
+        // Add to pending ONLY if not a leave task
+        if (isColumnKEmpty && isEmpty(columnPValue) && !isLeave) {
           pendingAccounts.push(rowData);
         }
         // For history view, include tasks where Column K is NOT empty
