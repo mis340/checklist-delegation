@@ -158,33 +158,21 @@ const Settings = () => {
 
             const tasks = [];
             if (data.table && data.table.rows) {
-                for (let i = 0; i < data.table.rows.length; i++) {
-                    const row = data.table.rows[i];
-                    if (!row.c) continue;
+                // Slice(1) to skip header row (Sheet Row 1), starting processing from Sheet Row 2
+                const rows = data.table.rows.slice(1);
+
+                rows.forEach((row, idx) => {
+                    if (!row.c) return;
 
                     const getValue = (index) => {
                         if (!row.c[index]) return "";
-                        // Handle formatted values (dates)
                         if (row.c[index].f) return String(row.c[index].f).trim();
                         return String(row.c[index].v || "").trim();
                     };
 
-                    // Skip header row
-                    const col0 = getValue(0);
-                    if (col0.toLowerCase() === "task id" || col0.toLowerCase() === "sr" || col0.toLowerCase() === "sr.") continue;
-
-                    // Map columns based on screenshot:
-                    // Col A (0): Task ID
-                    // Col B (1): Department
-                    // Col C (2): Given By
-                    // Col D (3): Name
-                    // Col E (4): Task Description
-                    // Col F (5): End Date
-                    // Col G (6): Frequency
-                    // Col H (7): Reminders
-                    // Col I (8): Attachment
+                    // idx 0 corresponds to Sheet Row 2
                     const task = {
-                        rowIndex: i + 2,
+                        rowIndex: idx + 2,
                         taskId: getValue(1),
                         department: getValue(2),
                         givenBy: getValue(3),
@@ -199,7 +187,7 @@ const Settings = () => {
                     if (task.taskId || task.department || task.name) {
                         tasks.push(task);
                     }
-                }
+                });
             }
             setUniqueTasks(tasks);
         } catch (error) {
@@ -275,30 +263,35 @@ const Settings = () => {
                 } else return;
 
                 const assignedTo = (rowValues[4] || "").toString().trim();
-                const columnKValue = rowValues[10];
-                const isColumnKEmpty = !columnKValue || String(columnKValue).trim() === "";
-
-                // Get Remarks (Column N / Index 13) to filter out existing Leave tasks
+                const columnKValue = (rowValues[10] || "").toString().trim();
+                const isColumnKEmpty = columnKValue === "";
                 const remarks = (rowValues[13] || "").toString().toLowerCase();
 
-                // Only pending tasks for this user AND NOT Leave tasks
-                if (isColumnKEmpty && assignedTo.toLowerCase() === userName.toLowerCase() && !remarks.includes("leave")) {
-                    // Store raw date value for filtering + formatted for display
+                // Show all tasks for this user (user requested "all task shows")
+                if (assignedTo.toLowerCase() === userName.toLowerCase().trim()) {
+                    // Column A (index 0) is the Timestamp/Date we want to filter on
+                    const rawTimestamp = rowValues[0];
+                    const timestampDate = parseDate(rawTimestamp);
+
+                    let timestampJsDate = null;
+                    if (timestampDate && timestampDate.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                        const [dd, mm, yyyy] = timestampDate.split('/');
+                        timestampJsDate = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
+                    }
+
                     const rawDateVal = rowValues[6];
                     const formattedDate = parseDate(rawDateVal);
-                    // Parse to JS Date for comparison
-                    let jsDate = null;
-                    if (formattedDate && formattedDate.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-                        const [dd, mm, yyyy] = formattedDate.split('/');
-                        jsDate = new Date(parseInt(yyyy), parseInt(mm) - 1, parseInt(dd));
-                    }
+
                     tasks.push({
                         rowIndex: rowIndex + 1,
                         taskId: rowValues[1] || "",
                         description: rowValues[5] || "",
                         date: formattedDate,
-                        dateObj: jsDate,
+                        timestampDate: timestampDate,
+                        timestampObj: timestampJsDate,
                         name: assignedTo,
+                        isPending: isColumnKEmpty,
+                        remarks: rowValues[13] || "",
                     });
                 }
             });
@@ -314,9 +307,10 @@ const Settings = () => {
 
     // Open Leave Transfer Modal when checkbox is clicked on a task row
     const openLeaveTransferModal = (task) => {
+        const today = new Date().toISOString().split('T')[0];
         setLeaveModalUser(task);
-        setLeaveStartDate("");
-        setLeaveEndDate("");
+        setLeaveStartDate(today);
+        setLeaveEndDate(today);
         setSelectedLeaveTasks(new Set());
         setShowLeaveModal(true);
         fetchChecklistTasksForUser(task.name);
@@ -329,18 +323,12 @@ const Settings = () => {
         setSelectedLeaveTasks(new Set());
     };
 
-    // Dynamically filter checklist tasks based on leave date range
+    // Dynamically filter checklist tasks based on leave date range (using Column A/timestamp)
     const filteredChecklistTasks = (() => {
         if (!checklistTasksForUser.length) return [];
 
-        // If no dates selected, show all tasks up to today
         if (!leaveStartDate && !leaveEndDate) {
-            const today = new Date();
-            today.setHours(23, 59, 59, 999);
-            return checklistTasksForUser.filter(t => {
-                if (!t.dateObj) return true; // include tasks with no date
-                return t.dateObj <= today;
-            });
+            return checklistTasksForUser;
         }
 
         const startD = leaveStartDate ? new Date(leaveStartDate) : null;
@@ -349,10 +337,10 @@ const Settings = () => {
         if (endD) endD.setHours(23, 59, 59, 999);
 
         return checklistTasksForUser.filter(t => {
-            if (!t.dateObj) return false; // exclude tasks with no date when filtering
-            if (startD && endD) return t.dateObj >= startD && t.dateObj <= endD;
-            if (startD) return t.dateObj >= startD;
-            if (endD) return t.dateObj <= endD;
+            if (!t.timestampObj) return false;
+            if (startD && endD) return t.timestampObj >= startD && t.timestampObj <= endD;
+            if (startD) return t.timestampObj >= startD;
+            if (endD) return t.timestampObj <= endD;
             return true;
         });
     })();
@@ -385,22 +373,29 @@ const Settings = () => {
 
             const remarkText = `Leave: ${formatLeaveDate(leaveStartDate)} to ${formatLeaveDate(leaveEndDate)}`;
 
+            const now = new Date();
+            const actualTimestamp = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
             const submissionData = selectedTasksList.map(task => ({
                 taskId: task.taskId,
                 rowIndex: task.rowIndex,
                 remarks: remarkText,
+                status: "Leave", // Optional: explicitly set status to "Leave" as well
+                actualDate: actualTimestamp, // This maps to Column K (index-10) in the backend updateTaskData function
             }));
 
             console.log("Submitting Leave Remarks:", submissionData);
 
-            const formData = new FormData();
-            formData.append("sheetName", "Checklist");
-            formData.append("action", "updateLeaveRemark");
-            formData.append("rowData", JSON.stringify(submissionData));
+            // Use URLSearchParams for action/sheetName for reliable GAS parsing
+            const params = new URLSearchParams();
+            params.append("action", "updateTaskData");
+            params.append("sheetName", "Checklist");
+            params.append("rowData", JSON.stringify(submissionData));
 
-            const response = await fetch(APPS_SCRIPT_URL, {
+            const response = await fetch(`${APPS_SCRIPT_URL}?${params.toString()}`, {
                 method: "POST",
-                body: formData,
+                headers: { "Content-Type": "text/plain" },
+                body: "",
             });
 
             let result;
@@ -1055,135 +1050,106 @@ const Settings = () => {
                                                 <tr className="bg-gray-50 border-b border-gray-200">
                                                     <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">
                                                         <div className="flex items-center gap-1.5">
-                                                            <input
-                                                                type="checkbox"
-                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                                onChange={(e) => {
-                                                                    if (e.target.checked) {
-                                                                        setSelectedTasks(new Set(uniqueTasks.map(t => t.rowIndex)));
-                                                                    } else {
-                                                                        setSelectedTasks(new Set());
-                                                                    }
-                                                                }}
-                                                                checked={selectedTasks.size === uniqueTasks.length && uniqueTasks.length > 0}
-                                                            />
                                                             Action
                                                         </div>
                                                     </th>
-                                                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Task ID</th>
                                                     <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Department</th>
                                                     <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Given By</th>
                                                     <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Name</th>
-                                                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Task Description</th>
-                                                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">End Date</th>
-                                                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Frequency</th>
-                                                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Reminders</th>
-                                                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap sticky top-0 z-10 bg-gray-50 shadow-sm">Attachment</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {uniqueTasks
-                                                    .filter(t =>
+                                                {(() => {
+                                                    const seen = new Set();
+                                                    const filtered = uniqueTasks.filter(t =>
                                                         !leaveFilter ||
                                                         t.name.toLowerCase().includes(leaveFilter.toLowerCase()) ||
                                                         t.department.toLowerCase().includes(leaveFilter.toLowerCase()) ||
                                                         t.taskDescription.toLowerCase().includes(leaveFilter.toLowerCase()) ||
                                                         t.taskId.toLowerCase().includes(leaveFilter.toLowerCase())
-                                                    )
-                                                    .length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
-                                                            <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                                                            <p className="text-sm font-medium">No tasks found</p>
-                                                        </td>
-                                                    </tr>
-                                                ) : (
-                                                    uniqueTasks
-                                                        .filter(t =>
-                                                            !leaveFilter ||
-                                                            t.name.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                            t.department.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                            t.taskDescription.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                            t.taskId.toLowerCase().includes(leaveFilter.toLowerCase())
-                                                        )
-                                                        .map((task, index) => (
-                                                            <tr key={index} className="hover:bg-blue-50/30 transition-colors">
-                                                                <td className="px-3 py-2">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                                        checked={selectedTasks.has(task.rowIndex)}
-                                                                        onChange={() => openLeaveTransferModal(task)}
-                                                                    />
+                                                    );
+                                                    const deduplicated = filtered.filter(t => {
+                                                        if (seen.has(t.name)) return false;
+                                                        seen.add(t.name);
+                                                        return true;
+                                                    });
+
+                                                    if (deduplicated.length === 0) {
+                                                        return (
+                                                            <tr>
+                                                                <td colSpan={4} className="px-4 py-10 text-center text-gray-400">
+                                                                    <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                                                                    <p className="text-sm font-medium">No tasks found</p>
                                                                 </td>
-                                                                <td className="px-3 py-2 font-semibold text-gray-700">{task.taskId}</td>
-                                                                <td className="px-3 py-2 font-semibold text-gray-700">{task.department}</td>
-                                                                <td className="px-3 py-2 text-gray-600">{task.givenBy}</td>
-                                                                <td className="px-3 py-2 text-gray-600">{task.name}</td>
-                                                                <td className="px-3 py-2 text-gray-600">
-                                                                    <span className="line-clamp-2">{task.taskDescription}</span>
-                                                                </td>
-                                                                <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{task.endDate}</td>
-                                                                <td className="px-3 py-2 text-gray-600">{task.frequency || "—"}</td>
-                                                                <td className="px-3 py-2 text-gray-600">{task.reminders || "—"}</td>
-                                                                <td className="px-3 py-2 text-gray-600">{task.attachment || "—"}</td>
                                                             </tr>
-                                                        ))
-                                                )}
+                                                        );
+                                                    }
+
+                                                    return deduplicated.map((task, index) => (
+                                                        <tr key={index} className="hover:bg-blue-50/30 transition-colors">
+                                                            <td className="px-3 py-2 text-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                                    checked={selectedTasks.has(task.rowIndex)}
+                                                                    onChange={() => openLeaveTransferModal(task)}
+                                                                />
+                                                            </td>
+                                                            <td className="px-3 py-2 font-semibold text-gray-700">{task.department}</td>
+                                                            <td className="px-3 py-2 text-gray-600">{task.givenBy}</td>
+                                                            <td className="px-3 py-2 text-gray-600">{task.name}</td>
+                                                        </tr>
+                                                    ));
+                                                })()}
                                             </tbody>
                                         </table>
                                     </div>
 
                                     {/* Mobile Card View */}
                                     <div className="md:hidden divide-y divide-gray-100">
-                                        {uniqueTasks
-                                            .filter(t =>
+                                        {(() => {
+                                            const seen = new Set();
+                                            const filtered = uniqueTasks.filter(t =>
                                                 !leaveFilter ||
                                                 t.name.toLowerCase().includes(leaveFilter.toLowerCase()) ||
                                                 t.department.toLowerCase().includes(leaveFilter.toLowerCase()) ||
                                                 t.taskDescription.toLowerCase().includes(leaveFilter.toLowerCase())
-                                            )
-                                            .length === 0 ? (
-                                            <div className="text-center py-10 text-gray-400">
-                                                <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-                                                <p className="text-sm font-medium">No tasks found</p>
-                                            </div>
-                                        ) : (
-                                            uniqueTasks
-                                                .filter(t =>
-                                                    !leaveFilter ||
-                                                    t.name.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                    t.department.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                    t.taskDescription.toLowerCase().includes(leaveFilter.toLowerCase())
-                                                )
-                                                .map((task, index) => (
-                                                    <div key={index} className="px-4 py-3">
-                                                        <div className="flex items-start gap-3">
-                                                            <input
-                                                                type="checkbox"
-                                                                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
-                                                                checked={selectedTasks.has(task.rowIndex)}
-                                                                onChange={() => openLeaveTransferModal(task)}
-                                                            />
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className="flex items-center justify-between">
-                                                                    <span className="text-xs font-bold text-gray-700">#{task.taskId}</span>
-                                                                    <span className="text-[11px] text-gray-500">{task.frequency}</span>
-                                                                </div>
-                                                                <p className="text-sm font-semibold text-gray-800 mt-0.5">{task.name}</p>
-                                                                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.taskDescription}</p>
-                                                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-gray-500">
-                                                                    <span><strong>Dept:</strong> {task.department}</span>
-                                                                    <span><strong>By:</strong> {task.givenBy}</span>
-                                                                    <span><strong>End:</strong> {task.endDate}</span>
-                                                                    <span><strong>Rem:</strong> {task.reminders || "—"}</span>
-                                                                    <span><strong>Att:</strong> {task.attachment || "—"}</span>
-                                                                </div>
+                                            );
+                                            const deduplicated = filtered.filter(t => {
+                                                if (seen.has(t.name)) return false;
+                                                seen.add(t.name);
+                                                return true;
+                                            });
+
+                                            if (deduplicated.length === 0) {
+                                                return (
+                                                    <div className="text-center py-10 text-gray-400">
+                                                        <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                                                        <p className="text-sm font-medium">No tasks found</p>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return deduplicated.map((task, index) => (
+                                                <div key={index} className="px-4 py-3">
+                                                    <div className="flex items-start gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 mt-0.5 cursor-pointer"
+                                                            checked={selectedTasks.has(task.rowIndex)}
+                                                            onChange={() => openLeaveTransferModal(task)}
+                                                        />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-semibold text-gray-800 mt-0.5">{task.name}</p>
+                                                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-gray-500">
+                                                                <span><strong>Dept:</strong> {task.department}</span>
+                                                                <span><strong>By:</strong> {task.givenBy}</span>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                ))
-                                        )}
+                                                </div>
+                                            ));
+                                        })()}
                                     </div>
                                 </>
                             )}
@@ -1257,11 +1223,6 @@ const Settings = () => {
                                             <label className="block text-sm font-semibold text-gray-700">
                                                 Tasks to Assign ({loadingChecklistTasks ? "..." : filteredChecklistTasks.length})
                                             </label>
-                                            {!loadingChecklistTasks && filteredChecklistTasks.length !== checklistTasksForUser.length && (
-                                                <p className="text-[11px] text-gray-400 mt-0.5">
-                                                    Showing {filteredChecklistTasks.length} of {checklistTasksForUser.length} total tasks (filtered by date)
-                                                </p>
-                                            )}
                                         </div>
 
                                         {loadingChecklistTasks ? (
@@ -1299,8 +1260,8 @@ const Settings = () => {
                                                                     />
                                                                 </th>
                                                                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Task ID</th>
-                                                                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Description</th>
                                                                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                                                                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Description</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100">
@@ -1320,10 +1281,10 @@ const Settings = () => {
                                                                         />
                                                                     </td>
                                                                     <td className="px-3 py-2 font-semibold text-gray-700">{ct.taskId}</td>
+                                                                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{ct.date}</td>
                                                                     <td className="px-3 py-2 text-gray-600">
                                                                         <span className="line-clamp-2">{ct.description}</span>
                                                                     </td>
-                                                                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{ct.date}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
