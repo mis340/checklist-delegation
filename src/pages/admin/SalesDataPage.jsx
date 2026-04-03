@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useMemo, useRef, captureBtnRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, captureBtnRef, useDeferredValue } from "react";
 import {
   CheckCircle2,
   Upload,
@@ -69,6 +69,10 @@ function AccountDataPage() {
   const [buddyTaskFilter, setBuddyTaskFilter] = useState(""); // Selected buddy name
   const [assignedPersons, setAssignedPersons] = useState([]); // List from sessionStorage
   const [currentCaptureId, setCurrentCaptureId] = useState(null);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const [visibleHistoryLimit, setVisibleHistoryLimit] = useState(50);
+  const [isInfiniteLoading, setIsInfiniteLoading] = useState(false);
+  const loaderRef = useRef(null);
   // Ye states already hai aapke code me (around line 50-60), check karo ye sab exist karte hai:
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
@@ -472,370 +476,7 @@ function AccountDataPage() {
     setSelectedMembers([]);
     setStartDate("");
     setEndDate("");
-  };
-
-  // NEW: Edit functionality functions
-  const handleEditClick = (historyItem) => {
-    const rowId = historyItem._id;
-    setEditingRows((prev) => new Set([...prev, rowId]));
-    setEditedAdminStatus((prev) => ({
-      ...prev,
-      [rowId]: historyItem["col15"] || "",
-    }));
-  };
-
-  const handleCancelEdit = (rowId) => {
-    setEditingRows((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(rowId);
-      return newSet;
-    });
-    setEditedAdminStatus((prev) => {
-      const newStatus = { ...prev };
-      delete newStatus[rowId];
-      return newStatus;
-    });
-  };
-
-  const handleSaveEdit = async (historyItem) => {
-    const rowId = historyItem._id;
-    const newStatus = editedAdminStatus[rowId];
-
-    if (savingEdits.has(rowId)) return;
-
-    setSavingEdits((prev) => new Set([...prev, rowId]));
-
-    try {
-      // Different approaches for clearing vs setting
-      const statusToSend =
-        newStatus === "" || newStatus === undefined ? "" : newStatus;
-
-      // console.log('=== EDIT DEBUG INFO ===')
-      // console.log('Row ID:', rowId)
-      // console.log('Original Status:', historyItem["col15"])
-      // console.log('New Status:', newStatus)
-      // console.log('Status to Send:', statusToSend)
-      // console.log('Task ID:', historyItem._taskId || historyItem["col1"])
-      // console.log('Row Index:', historyItem._rowIndex)
-
-      const submissionData = [
-        {
-          taskId: historyItem._taskId || historyItem["col1"],
-          rowIndex: historyItem._rowIndex,
-          adminDoneStatus: statusToSend, // Send empty string to clear, "Done" to set
-        },
-      ];
-
-      // console.log('Submission Data:', JSON.stringify(submissionData, null, 2))
-
-      const formData = new FormData();
-      formData.append("sheetName", CONFIG.SHEET_NAME);
-      formData.append("action", "updateAdminDone");
-      formData.append("rowData", JSON.stringify(submissionData));
-
-      // console.log('Making API request...')
-      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-        method: "POST",
-        body: formData,
-      });
-
-      const responseText = await response.text();
-      console.log("Raw Response:", responseText);
-
-      let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("JSON Parse Error:", parseError);
-        throw new Error(`Invalid response format: ${responseText}`);
-      }
-
-      // console.log('Parsed Result:', result)
-
-      if (result.success) {
-        // Update local state - use empty string for cleared status
-        const updatedStatus =
-          newStatus === "" || newStatus === undefined ? "" : newStatus;
-
-        // console.log('Updating local state with:', updatedStatus)
-
-        setHistoryData((prev) =>
-          prev.map((item) =>
-            item._id === rowId ? { ...item, col15: updatedStatus } : item
-          )
-        );
-
-        // Exit edit mode
-        setEditingRows((prev) => {
-          const newSet = new Set(prev);
-          newSet.delete(rowId);
-          return newSet;
-        });
-
-        setEditedAdminStatus((prev) => {
-          const newStatusObj = { ...prev };
-          delete newStatusObj[rowId];
-          return newStatusObj;
-        });
-
-        setSuccessMessage("Admin status updated successfully!");
-
-        // Refresh data after a short delay
-        setTimeout(() => {
-          // console.log('Refreshing data...')
-          fetchSheetData();
-        }, 3000);
-      } else {
-        console.error("Backend Error:", result.error);
-        throw new Error(result.error || "Failed to update Admin status");
-      }
-    } catch (error) {
-      console.error("Error updating Admin status:", error);
-      setSuccessMessage(`Failed to update Admin status: ${error.message}`);
-    } finally {
-      setSavingEdits((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(rowId);
-        return newSet;
-      });
-    }
-  };
-
-  // NEW: Admin functions for history management
-  const handleMarkMultipleDone = async () => {
-    if (selectedHistoryItems.length === 0) {
-      return;
-    }
-    if (markingAsDone) return;
-
-    // Open confirmation modal
-    setConfirmationModal({
-      isOpen: true,
-      itemCount: selectedHistoryItems.length,
-    });
-  };
-
-  // NEW: Confirmation modal component
-  const ConfirmationModal = ({ isOpen, itemCount, onConfirm, onCancel }) => {
-    if (!isOpen) return null;
-
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-yellow-100 text-yellow-600 rounded-full p-3 mr-4">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-800">
-              Mark Items as Admin Done
-            </h2>
-          </div>
-
-          <p className="text-gray-600 text-center mb-6">
-            Are you sure you want to mark {itemCount}{" "}
-            {itemCount === 1 ? "item" : "items"} as Admin Done?
-          </p>
-
-          <div className="flex justify-center space-x-4">
-            <button
-              onClick={onCancel}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onConfirm}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // UPDATED: Admin Done submission handler - Store "Done" text instead of timestamp
-  const confirmMarkDone = async () => {
-    // Close the modal
-    setConfirmationModal({ isOpen: false, itemCount: 0 });
-    setMarkingAsDone(true);
-
-    try {
-      // Prepare submission data for multiple items
-      const submissionData = selectedHistoryItems.map((historyItem) => ({
-        taskId: historyItem._taskId || historyItem["col1"],
-        rowIndex: historyItem._rowIndex,
-        adminDoneStatus: "Done", // This will update Column P
-      }));
-
-      const formData = new FormData();
-      formData.append("sheetName", CONFIG.SHEET_NAME);
-      formData.append("action", "updateAdminDone"); // Use the new action name
-      formData.append("rowData", JSON.stringify(submissionData));
-
-      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
-        method: "POST",
-        body: formData,
-      });
-      const result = await response.json();
-
-      if (result.success) {
-        // Remove processed items from history view
-        setHistoryData((prev) =>
-          prev.filter(
-            (item) =>
-              !selectedHistoryItems.some(
-                (selected) => selected._id === item._id
-              )
-          )
-        );
-
-        setSelectedHistoryItems([]);
-        setSuccessMessage(
-          `Successfully marked ${selectedHistoryItems.length} items as Admin Done!`
-        );
-
-        // Refresh data
-        setTimeout(() => {
-          fetchSheetData();
-        }, 2000);
-      } else {
-        throw new Error(result.error || "Failed to mark items as Admin Done");
-      }
-    } catch (error) {
-      console.error("Error marking tasks as Admin Done:", error);
-      setSuccessMessage(`Failed to mark tasks as Admin Done: ${error.message}`);
-    } finally {
-      setMarkingAsDone(false);
-    }
-  };
-
-  const isSubmitEnabled = useMemo(() => {
-    if (selectedItems.size === 0) return false;
-
-    const selectedItemsArray = Array.from(selectedItems);
-    // console.log("sleectedItemsArray", selectedItemsArray);
-    return selectedItemsArray.every(
-      (id) => additionalData[id] === "Yes" || additionalData[id] === "Not Done"
-    );
-  }, [selectedItems, additionalData]);
-
-  // Memoized filtered data to prevent unnecessary re-renders
-  const filteredAccountData = useMemo(() => {
-    const filtered = searchTerm
-      ? accountData.filter((account) =>
-        Object.values(account).some(
-          (value) =>
-            value &&
-            value.toString().toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      )
-      : accountData;
-    return filtered.sort(sortDateWise);
-  }, [accountData, searchTerm]);
-
-  const filteredHistoryData = useMemo(() => {
-    let parsedStartDate = null;
-    let parsedEndDate = null;
-    if (startDate) {
-      parsedStartDate = new Date(startDate);
-      parsedStartDate.setHours(0, 0, 0, 0);
-    }
-    if (endDate) {
-      parsedEndDate = new Date(endDate);
-      parsedEndDate.setHours(23, 59, 59, 999);
-    }
-    const loweredSearchTerm = searchTerm ? searchTerm.toLowerCase() : "";
-
-    return historyData
-      .filter((item) => {
-        const matchesSearch = loweredSearchTerm
-          ? Object.values(item).some(
-            (value) =>
-              value &&
-              value.toString().toLowerCase().includes(loweredSearchTerm)
-          )
-          : true;
-        const matchesMember =
-          selectedMembers.length > 0
-            ? selectedMembers.includes(item["col4"])
-            : true;
-        let matchesDateRange = true;
-        if (parsedStartDate || parsedEndDate) {
-          const itemDate = parseDateFromDDMMYYYY(item["col10"]);
-          if (!itemDate) return false;
-          if (parsedStartDate && itemDate < parsedStartDate) matchesDateRange = false;
-          if (parsedEndDate && itemDate > parsedEndDate) matchesDateRange = false;
-        }
-        return matchesSearch && matchesMember && matchesDateRange;
-      })
-      .sort((a, b) => {
-        const dateStrA = a["col10"] || "";
-        const dateStrB = b["col10"] || "";
-        const dateA = parseDateFromDDMMYYYY(dateStrA);
-        const dateB = parseDateFromDDMMYYYY(dateStrB);
-        if (!dateA) return 1;
-        if (!dateB) return -1;
-        return dateB.getTime() - dateA.getTime();
-      });
-  }, [historyData, searchTerm, selectedMembers, startDate, endDate]);
-
-  const taskStatistics = useMemo(() => {
-    const totalCompleted = historyData.length;
-    const memberStats =
-      selectedMembers.length > 0
-        ? selectedMembers.reduce((stats, member) => {
-          const memberTasks = historyData.filter(
-            (task) => task["col4"] === member
-          ).length;
-          return {
-            ...stats,
-            [member]: memberTasks,
-          };
-        }, {})
-        : {};
-    const filteredTotal = filteredHistoryData.length;
-    return {
-      totalCompleted,
-      memberStats,
-      filteredTotal,
-    };
-  }, [historyData, selectedMembers, filteredHistoryData]);
-
-  // Pre-calculate unprocessed history items to avoid expensive filters in render
-  const unprocessedHistoryItems = useMemo(() => {
-    return filteredHistoryData.filter(
-      (item) =>
-        isEmpty(item["col15"]) ||
-        (item["col15"].toString().trim() !== "Done" &&
-          item["col15"].toString().trim() !== "Not Done")
-    );
-  }, [filteredHistoryData]);
-
-
-
-  const getFilteredMembersList = () => {
-    if (userRole === "admin") {
-      return membersList;
-    } else {
-      return membersList.filter(
-        (member) => member.toLowerCase() === username.toLowerCase()
-      );
-    }
+    setVisibleHistoryLimit(50);
   };
 
   // UPDATED: fetchSheetData - Show only data where Column K is null
@@ -966,6 +607,12 @@ function AccountDataPage() {
           }
         });
 
+        // Add caching for faster filtering/sorting
+        rowData._searchString = Object.values(rowData).join(" ").toLowerCase();
+        if (rowData.col10) {
+          rowData._parsedCol10 = parseDateFromDDMMYYYY(rowData.col10);
+        }
+
         // ✅ ONLY ADD IF COLUMN K IS EMPTY/NULL
         const isColumnKEmpty = isEmpty(columnKValue);
 
@@ -1002,6 +649,398 @@ function AccountDataPage() {
   useEffect(() => {
     fetchSheetData();
   }, [fetchSheetData]);
+
+  // NEW: Edit functionality functions
+  const handleEditClick = useCallback((historyItem) => {
+    const rowId = historyItem._id;
+    setEditingRows((prev) => new Set([...prev, rowId]));
+    setEditedAdminStatus((prev) => ({
+      ...prev,
+      [rowId]: historyItem["col15"] || "",
+    }));
+  }, []);
+
+  const handleCancelEdit = useCallback((rowId) => {
+    setEditingRows((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(rowId);
+      return newSet;
+    });
+    setEditedAdminStatus((prev) => {
+      const newStatus = { ...prev };
+      delete newStatus[rowId];
+      return newStatus;
+    });
+  }, []);
+
+  const handleSaveEdit = useCallback(async (historyItem) => {
+    const rowId = historyItem._id;
+    const newStatus = editedAdminStatus[rowId];
+
+    if (savingEdits.has(rowId)) return;
+
+    setSavingEdits((prev) => new Set([...prev, rowId]));
+
+    try {
+      // Different approaches for clearing vs setting
+      const statusToSend =
+        newStatus === "" || newStatus === undefined ? "" : newStatus;
+
+      // console.log('=== EDIT DEBUG INFO ===')
+      // console.log('Row ID:', rowId)
+      // console.log('Original Status:', historyItem["col15"])
+      // console.log('New Status:', newStatus)
+      // console.log('Status to Send:', statusToSend)
+      // console.log('Task ID:', historyItem._taskId || historyItem["col1"])
+      // console.log('Row Index:', historyItem._rowIndex)
+
+      const submissionData = [
+        {
+          taskId: historyItem._taskId || historyItem["col1"],
+          rowIndex: historyItem._rowIndex,
+          adminDoneStatus: statusToSend, // Send empty string to clear, "Done" to set
+        },
+      ];
+
+      // console.log('Submission Data:', JSON.stringify(submissionData, null, 2))
+
+      const formData = new FormData();
+      formData.append("sheetName", CONFIG.SHEET_NAME);
+      formData.append("action", "updateAdminDone");
+      formData.append("rowData", JSON.stringify(submissionData));
+
+      // console.log('Making API request...')
+      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: "POST",
+        body: formData,
+      });
+
+      const responseText = await response.text();
+      console.log("Raw Response:", responseText);
+
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("JSON Parse Error:", parseError);
+        throw new Error(`Invalid response format: ${responseText}`);
+      }
+
+      // console.log('Parsed Result:', result)
+
+      if (result.success) {
+        // Update local state - use empty string for cleared status
+        const updatedStatus =
+          newStatus === "" || newStatus === undefined ? "" : newStatus;
+
+        // console.log('Updating local state with:', updatedStatus)
+
+        setHistoryData((prev) =>
+          prev.map((item) =>
+            item._id === rowId ? { ...item, col15: updatedStatus } : item
+          )
+        );
+
+        // Exit edit mode
+        setEditingRows((prev) => {
+          const newSet = new Set(prev);
+          newSet.delete(rowId);
+          return newSet;
+        });
+
+        setEditedAdminStatus((prev) => {
+          const newStatusObj = { ...prev };
+          delete newStatusObj[rowId];
+          return newStatusObj;
+        });
+
+        setSuccessMessage("Admin status updated successfully!");
+
+        // Refresh data after a short delay
+        setTimeout(() => {
+          // console.log('Refreshing data...')
+          fetchSheetData();
+        }, 3000);
+      } else {
+        console.error("Backend Error:", result.error);
+        throw new Error(result.error || "Failed to update Admin status");
+      }
+    } catch (error) {
+      console.error("Error updating Admin status:", error);
+      setSuccessMessage(`Failed to update Admin status: ${error.message}`);
+    } finally {
+      setSavingEdits((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(rowId);
+        return newSet;
+      });
+    }
+  }, [editedAdminStatus, savingEdits, fetchSheetData]);
+
+  // NEW: Admin functions for history management
+  const handleMarkMultipleDone = useCallback(async () => {
+    if (selectedHistoryItems.length === 0) {
+      return;
+    }
+    if (markingAsDone) return;
+
+    // Open confirmation modal
+    setConfirmationModal({
+      isOpen: true,
+      itemCount: selectedHistoryItems.length,
+    });
+  }, [selectedHistoryItems, markingAsDone]);
+
+  // NEW: Confirmation modal component
+  const ConfirmationModal = ({ isOpen, itemCount, onConfirm, onCancel }) => {
+    if (!isOpen) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+          <div className="flex items-center justify-center mb-4">
+            <div className="bg-yellow-100 text-yellow-600 rounded-full p-3 mr-4">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-800">
+              Mark Items as Admin Done
+            </h2>
+          </div>
+
+          <p className="text-gray-600 text-center mb-6">
+            Are you sure you want to mark {itemCount}{" "}
+            {itemCount === 1 ? "item" : "items"} as Admin Done?
+          </p>
+
+          <div className="flex justify-center space-x-4">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // UPDATED: Admin Done submission handler - Store "Done" text instead of timestamp
+  const confirmMarkDone = useCallback(async () => {
+    // Close the modal
+    setConfirmationModal({ isOpen: false, itemCount: 0 });
+    setMarkingAsDone(true);
+
+    try {
+      // Prepare submission data for multiple items
+      const submissionData = selectedHistoryItems.map((historyItem) => ({
+        taskId: historyItem._taskId || historyItem["col1"],
+        rowIndex: historyItem._rowIndex,
+        adminDoneStatus: "Done", // This will update Column P
+      }));
+
+      const formData = new FormData();
+      formData.append("sheetName", CONFIG.SHEET_NAME);
+      formData.append("action", "updateAdminDone"); // Use the new action name
+      formData.append("rowData", JSON.stringify(submissionData));
+
+      const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+        method: "POST",
+        body: formData,
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        // Remove processed items from history view
+        setHistoryData((prev) =>
+          prev.filter(
+            (item) =>
+              !selectedHistoryItems.some(
+                (selected) => selected._id === item._id
+              )
+          )
+        );
+
+        setSelectedHistoryItems([]);
+        setSuccessMessage(
+          `Successfully marked ${selectedHistoryItems.length} items as Admin Done!`
+        );
+
+        // Refresh data
+        setTimeout(() => {
+          fetchSheetData();
+        }, 2000);
+      } else {
+        throw new Error(result.error || "Failed to mark items as Admin Done");
+      }
+    } catch (error) {
+      console.error("Error marking tasks as Admin Done:", error);
+      setSuccessMessage(`Failed to mark tasks as Admin Done: ${error.message}`);
+    } finally {
+      setMarkingAsDone(false);
+    }
+  }, [selectedHistoryItems, fetchSheetData]);
+
+  const isSubmitEnabled = useMemo(() => {
+    if (selectedItems.size === 0) return false;
+
+    const selectedItemsArray = Array.from(selectedItems);
+    // console.log("sleectedItemsArray", selectedItemsArray);
+    return selectedItemsArray.every(
+      (id) => additionalData[id] === "Yes" || additionalData[id] === "Not Done"
+    );
+  }, [selectedItems, additionalData]);
+
+  // Memoized filtered data to prevent unnecessary re-renders
+  const filteredAccountData = useMemo(() => {
+    const loweredSearch = deferredSearchTerm.toLowerCase();
+    const filtered = deferredSearchTerm
+      ? accountData.filter((account) =>
+        account._searchString.includes(loweredSearch)
+      )
+      : accountData;
+    return filtered.sort(sortDateWise);
+  }, [accountData, deferredSearchTerm]);
+
+  const filteredHistoryData = useMemo(() => {
+    let parsedStartDate = null;
+    let parsedEndDate = null;
+    if (startDate) {
+      parsedStartDate = new Date(startDate);
+      parsedStartDate.setHours(0, 0, 0, 0);
+    }
+    if (endDate) {
+      parsedEndDate = new Date(endDate);
+      parsedEndDate.setHours(23, 59, 59, 999);
+    }
+    const loweredSearchTerm = deferredSearchTerm ? deferredSearchTerm.toLowerCase() : "";
+
+    return historyData
+      .filter((item) => {
+        const matchesSearch = loweredSearchTerm
+          ? item._searchString.includes(loweredSearchTerm)
+          : true;
+        const matchesMember =
+          selectedMembers.length > 0
+            ? selectedMembers.includes(item["col4"])
+            : true;
+        let matchesDateRange = true;
+        if (parsedStartDate || parsedEndDate) {
+          const itemDate = item._parsedCol10;
+          if (!itemDate) return false;
+          if (parsedStartDate && itemDate < parsedStartDate) matchesDateRange = false;
+          if (parsedEndDate && itemDate > parsedEndDate) matchesDateRange = false;
+        }
+        return matchesSearch && matchesMember && matchesDateRange;
+      })
+      .sort((a, b) => {
+        const dateA = a._parsedCol10;
+        const dateB = b._parsedCol10;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return dateB.getTime() - dateA.getTime();
+      });
+  }, [historyData, deferredSearchTerm, selectedMembers, startDate, endDate]);
+
+  useEffect(() => {
+    setVisibleHistoryLimit(50);
+  }, [deferredSearchTerm, selectedMembers, startDate, endDate]);
+
+  // NEW: Infinite Scroll logic
+  useEffect(() => {
+    if (!showHistory) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting && filteredHistoryData.length > visibleHistoryLimit) {
+          setIsInfiniteLoading(true);
+          // Small delay to make history load feel natural and show the loader
+          setTimeout(() => {
+            setVisibleHistoryLimit((prev) => prev + 50);
+            setIsInfiniteLoading(false);
+          }, 600);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentLoader = loaderRef.current;
+    if (currentLoader) {
+      observer.observe(currentLoader);
+    }
+
+    return () => {
+      if (currentLoader) {
+        observer.unobserve(currentLoader);
+      }
+    };
+  }, [showHistory, visibleHistoryLimit, filteredHistoryData.length]);
+
+  const taskStatistics = useMemo(() => {
+    const totalCompleted = historyData.length;
+    const filteredTotal = filteredHistoryData.length;
+
+    // Faster single-pass member statistics
+    const memberStats = {};
+    if (selectedMembers.length > 0) {
+      selectedMembers.forEach(m => memberStats[m] = 0);
+      for (let i = 0; i < historyData.length; i++) {
+        const name = historyData[i]["col4"];
+        if (memberStats[name] !== undefined) {
+          memberStats[name]++;
+        }
+      }
+    }
+
+    return {
+      totalCompleted,
+      memberStats,
+      filteredTotal,
+    };
+  }, [historyData, selectedMembers, filteredHistoryData]);
+
+  // Pre-calculate unprocessed history items to avoid expensive filters in render
+  const unprocessedHistoryItems = useMemo(() => {
+    return filteredHistoryData.filter(
+      (item) =>
+        isEmpty(item["col15"]) ||
+        (item["col15"].toString().trim() !== "Done" &&
+          item["col15"].toString().trim() !== "Not Done")
+    );
+  }, [filteredHistoryData]);
+
+
+
+  const getFilteredMembersList = () => {
+    if (userRole === "admin") {
+      return membersList;
+    } else {
+      return membersList.filter(
+        (member) => member.toLowerCase() === username.toLowerCase()
+      );
+    }
+  };
+
 
   // Checkbox handlers with better state management
   const handleSelectItem = useCallback((id, isChecked) => {
@@ -1670,7 +1709,8 @@ function AccountDataPage() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredHistoryData.length > 0 ? (
-                      filteredHistoryData.map((history) => {
+                      <>
+                        {filteredHistoryData.slice(0, visibleHistoryLimit).map((history) => {
                         const isInEditMode = editingRows.has(history._id);
                         const isSaving = savingEdits.has(history._id);
 
@@ -1993,37 +2033,57 @@ function AccountDataPage() {
                             </td>
                           </tr>
                         );
-                      })
-                    ) : (
-                      <tr>
-                        {/* Update colspan calculation based on hidden columns and new order */}
-                        <td
-                          colSpan={
-                            (userRole === "admin" ? 1 : 0) + // Admin Done column (now first)
-                            (userRole === "admin" ? 1 : 0) + // Admin checkbox column (now second)
-                            (userRole !== "admin" ? 1 : 0) + // Task ID column
-                            (userRole !== "admin" && isAdmin ? 1 : 0) + // Department Name column
-                            (userRole !== "admin" && isAdmin ? 1 : 0) + // Given By column
-                            (userRole !== "admin" && isAdmin ? 1 : 0) + // Name column
-                            7 + // Fixed columns (Task Description, Task Start Date, Freq, Require Attachment, Actual Date, Status, Remarks, Attachment)
-                            (userRole !== "admin" && isAdmin ? 1 : 0) // Enable Reminders column
-                          }
-                          className="px-6 py-4 text-center text-gray-500"
-                        >
-                          {searchTerm ||
-                            selectedMembers.length > 0 ||
-                            startDate ||
-                            endDate
-                            ? "No historical records matching your filters"
-                            : "No completed records found"}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
+                      })}
+                    </>
+                      ) : (
+                        <tr>
+                          {/* Update colspan calculation based on hidden columns and new order */}
+                          <td
+                            colSpan={
+                              (userRole === "admin" ? 1 : 0) + // Admin Done column (now first)
+                              (userRole === "admin" ? 1 : 0) + // Admin checkbox column (now second)
+                              (userRole !== "admin" ? 1 : 0) + // Task ID column
+                              (userRole !== "admin" && isAdmin ? 1 : 0) + // Department Name column
+                              (userRole !== "admin" && isAdmin ? 1 : 0) + // Given By column
+                              (userRole !== "admin" && isAdmin ? 1 : 0) + // Name column
+                              7 + // Fixed columns (Task Description, Task Start Date, Freq, Require Attachment, Actual Date, Status, Remarks, Attachment)
+                              (userRole !== "admin" && isAdmin ? 1 : 0) // Enable Reminders column
+                            }
+                            className="px-6 py-4 text-center text-gray-500"
+                          >
+                            {searchTerm ||
+                              selectedMembers.length > 0 ||
+                              startDate ||
+                              endDate
+                              ? "No historical records matching your filters"
+                              : "No completed records found"}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Infinite Scroll Loader */}
+                {filteredHistoryData.length > visibleHistoryLimit && (
+                  <div
+                    ref={loaderRef}
+                    className="p-3 flex items-center justify-center border-t border-purple-100 bg-purple-50/20"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-purple-700 text-sm font-medium animate-pulse">Loading...</span>
+                    </div>
+                  </div>
+                )}
+                
+                {filteredHistoryData.length > 0 && filteredHistoryData.length <= visibleHistoryLimit && (
+                  <div className="p-4 text-center text-gray-400 text-sm border-t border-gray-100 italic">
+                    You've reached the end of the history.
+                  </div>
+                )}
+              </>
+            ) : (
             <>
               {/* /* Regular Tasks Table - Optimized for performance */}
               <div className="hidden sm:block h-[calc(100vh-250px)] overflow-auto">
