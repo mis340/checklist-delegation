@@ -11,7 +11,7 @@ import {
   Save,
   XCircle,
   Camera,
-
+  ChevronDown,
 } from "lucide-react";
 import AdminLayout from "../../components/layout/AdminLayout";
 
@@ -443,11 +443,18 @@ function AccountDataPage() {
   const parseDateFromDDMMYYYY = (dateStr) => {
     if (!dateStr || typeof dateStr !== "string") return null;
 
+    if (!parseDateFromDDMMYYYY.cache) parseDateFromDDMMYYYY.cache = new Map();
+    if (parseDateFromDDMMYYYY.cache.has(dateStr)) return parseDateFromDDMMYYYY.cache.get(dateStr);
+
     // Extract just the date part if it includes time
     const datePart = dateStr.includes(" ") ? dateStr.split(" ")[0] : dateStr;
     const parts = datePart.split("/");
     if (parts.length !== 3) return null;
-    return new Date(parts[2], parts[1] - 1, parts[0]);
+    
+    const parsedDate = new Date(parts[2], parts[1] - 1, parts[0]);
+    parseDateFromDDMMYYYY.cache.set(dateStr, parsedDate);
+    
+    return parsedDate;
   };
 
   const sortDateWise = (a, b) => {
@@ -742,16 +749,25 @@ function AccountDataPage() {
   }, [accountData, searchTerm]);
 
   const filteredHistoryData = useMemo(() => {
+    let parsedStartDate = null;
+    let parsedEndDate = null;
+    if (startDate) {
+      parsedStartDate = new Date(startDate);
+      parsedStartDate.setHours(0, 0, 0, 0);
+    }
+    if (endDate) {
+      parsedEndDate = new Date(endDate);
+      parsedEndDate.setHours(23, 59, 59, 999);
+    }
+    const loweredSearchTerm = searchTerm ? searchTerm.toLowerCase() : "";
+
     return historyData
       .filter((item) => {
-        const matchesSearch = searchTerm
+        const matchesSearch = loweredSearchTerm
           ? Object.values(item).some(
             (value) =>
               value &&
-              value
-                .toString()
-                .toLowerCase()
-                .includes(searchTerm.toLowerCase())
+              value.toString().toLowerCase().includes(loweredSearchTerm)
           )
           : true;
         const matchesMember =
@@ -759,19 +775,11 @@ function AccountDataPage() {
             ? selectedMembers.includes(item["col4"])
             : true;
         let matchesDateRange = true;
-        if (startDate || endDate) {
+        if (parsedStartDate || parsedEndDate) {
           const itemDate = parseDateFromDDMMYYYY(item["col10"]);
           if (!itemDate) return false;
-          if (startDate) {
-            const startDateObj = new Date(startDate);
-            startDateObj.setHours(0, 0, 0, 0);
-            if (itemDate < startDateObj) matchesDateRange = false;
-          }
-          if (endDate) {
-            const endDateObj = new Date(endDate);
-            endDateObj.setHours(23, 59, 59, 999);
-            if (itemDate > endDateObj) matchesDateRange = false;
-          }
+          if (parsedStartDate && itemDate < parsedStartDate) matchesDateRange = false;
+          if (parsedEndDate && itemDate > parsedEndDate) matchesDateRange = false;
         }
         return matchesSearch && matchesMember && matchesDateRange;
       })
@@ -786,7 +794,7 @@ function AccountDataPage() {
       });
   }, [historyData, searchTerm, selectedMembers, startDate, endDate]);
 
-  const getTaskStatistics = () => {
+  const taskStatistics = useMemo(() => {
     const totalCompleted = historyData.length;
     const memberStats =
       selectedMembers.length > 0
@@ -806,17 +814,19 @@ function AccountDataPage() {
       memberStats,
       filteredTotal,
     };
-  };
+  }, [historyData, selectedMembers, filteredHistoryData]);
 
-  const handleMemberSelection = (member) => {
-    setSelectedMembers((prev) => {
-      if (prev.includes(member)) {
-        return prev.filter((item) => item !== member);
-      } else {
-        return [...prev, member];
-      }
-    });
-  };
+  // Pre-calculate unprocessed history items to avoid expensive filters in render
+  const unprocessedHistoryItems = useMemo(() => {
+    return filteredHistoryData.filter(
+      (item) =>
+        isEmpty(item["col15"]) ||
+        (item["col15"].toString().trim() !== "Done" &&
+          item["col15"].toString().trim() !== "Not Done")
+    );
+  }, [filteredHistoryData]);
+
+
 
   const getFilteredMembersList = () => {
     if (userRole === "admin") {
@@ -1317,7 +1327,7 @@ function AccountDataPage() {
             )}
 
             {/* Toggle history button */}
-            {/* <button
+            <button
               onClick={toggleHistory}
               className="rounded-md bg-gradient-to-r from-blue-500 to-indigo-600 py-2 px-4 text-white hover:from-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 w-full sm:w-auto text-center"
             >
@@ -1332,7 +1342,7 @@ function AccountDataPage() {
                   <span>View History</span>
                 </div>
               )}
-            </button> */}
+            </button>
 
             {/* Submit button (only when not history view) */}
             {!showHistory && (
@@ -1427,29 +1437,30 @@ function AccountDataPage() {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   {getFilteredMembersList().length > 0 && (
                     <div className="flex flex-col">
-                      <div className="mb-2 flex items-center">
-                        <span className="text-sm font-medium text-purple-700">
+                      <div className="mb-1.5 flex items-center">
+                        <span className="text-xs font-semibold text-purple-700 uppercase tracking-wider">
                           Filter by Member:
                         </span>
                       </div>
-                      <div className="flex flex-wrap gap-3 max-h-32 overflow-y-auto p-2 border border-gray-200 rounded-md bg-white">
-                        {getFilteredMembersList().map((member, idx) => (
-                          <div key={idx} className="flex items-center">
-                            <input
-                              id={`member-${idx}`}
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                              checked={selectedMembers.includes(member)}
-                              onChange={() => handleMemberSelection(member)}
-                            />
-                            <label
-                              htmlFor={`member-${idx}`}
-                              className="ml-2 text-sm text-gray-700"
-                            >
+                      <div className="relative">
+                        <select
+                          value={selectedMembers.length === 1 ? selectedMembers[0] : ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedMembers(val ? [val] : []);
+                          }}
+                          className="w-full sm:w-64 pl-3 pr-10 py-2.5 border border-purple-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-sm appearance-none shadow-sm transition-all hover:border-purple-300"
+                        >
+                          <option value="">All Members</option>
+                          {getFilteredMembersList().map((member, idx) => (
+                            <option key={idx} value={member}>
                               {member}
-                            </label>
-                          </div>
-                        ))}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                          <ChevronDown size={18} className="text-purple-400" />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1528,7 +1539,7 @@ function AccountDataPage() {
                         Total Completed
                       </span>
                       <div className="text-lg font-semibold text-blue-600">
-                        {getTaskStatistics().totalCompleted}
+                        {taskStatistics.totalCompleted}
                       </div>
                     </div>
                     {(selectedMembers.length > 0 ||
@@ -1540,7 +1551,7 @@ function AccountDataPage() {
                             Filtered Results
                           </span>
                           <div className="text-lg font-semibold text-blue-600">
-                            {getTaskStatistics().filteredTotal}
+                            {taskStatistics.filteredTotal}
                           </div>
                         </div>
                       )}
@@ -1551,7 +1562,7 @@ function AccountDataPage() {
                       >
                         <span className="text-xs text-gray-500">{member}</span>
                         <div className="text-lg font-semibold text-indigo-600">
-                          {getTaskStatistics().memberStats[member]}
+                          {taskStatistics.memberStats[member]}
                         </div>
                       </div>
                     ))}
@@ -1579,34 +1590,11 @@ function AccountDataPage() {
                               type="checkbox"
                               className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
                               checked={
-                                filteredHistoryData.filter(
-                                  (item) =>
-                                    isEmpty(item["col15"]) ||
-                                    (item["col15"].toString().trim() !==
-                                      "Done" &&
-                                      item["col15"].toString().trim() !==
-                                      "Not Done")
-                                ).length > 0 &&
-                                selectedHistoryItems.length ===
-                                filteredHistoryData.filter(
-                                  (item) =>
-                                    isEmpty(item["col15"]) ||
-                                    (item["col15"].toString().trim() !==
-                                      "Done" &&
-                                      item["col15"].toString().trim() !==
-                                      "Not Done")
-                                ).length
+                                unprocessedHistoryItems.length > 0 &&
+                                selectedHistoryItems.length === unprocessedHistoryItems.length
                               }
                               onChange={(e) => {
-                                const unprocessedItems =
-                                  filteredHistoryData.filter(
-                                    (item) =>
-                                      isEmpty(item["col15"]) ||
-                                      (item["col15"].toString().trim() !==
-                                        "Done" &&
-                                        item["col15"].toString().trim() !==
-                                        "Not Done")
-                                  );
+                                const unprocessedItems = unprocessedHistoryItems;
                                 if (e.target.checked) {
                                   setSelectedHistoryItems(unprocessedItems);
                                 } else {

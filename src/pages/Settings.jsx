@@ -41,6 +41,12 @@ const Settings = () => {
     const [selectedLeaveTasks, setSelectedLeaveTasks] = useState(new Set());
     const [submittingLeave, setSubmittingLeave] = useState(false);
     const [leaveFilter, setLeaveFilter] = useState("");
+    
+    // Leave history states
+    const [leaveSubTab, setLeaveSubTab] = useState("assign");
+    const [leaveHistory, setLeaveHistory] = useState([]);
+    const [loadingLeaveHistory, setLoadingLeaveHistory] = useState(false);
+    const [leaveHistoryFilter, setLeaveHistoryFilter] = useState("");
 
     const [formData, setFormData] = useState({
         department: "",
@@ -60,10 +66,14 @@ const Settings = () => {
 
     // Fetch Unique tasks when Leave tab is selected
     useEffect(() => {
-        if (activeTab === "leave" && uniqueTasks.length === 0) {
-            fetchUniqueTasks();
+        if (activeTab === "leave") {
+            if (leaveSubTab === "assign" && uniqueTasks.length === 0) {
+                fetchUniqueTasks();
+            } else if (leaveSubTab === "history" && leaveHistory.length === 0) {
+                fetchLeaveHistory();
+            }
         }
-    }, [activeTab]);
+    }, [activeTab, leaveSubTab, uniqueTasks.length, leaveHistory.length]);
 
     const fetchData = async () => {
         try {
@@ -195,6 +205,83 @@ const Settings = () => {
             showToast("Failed to fetch unique tasks.", "error");
         } finally {
             setLoadingUnique(false);
+        }
+    };
+
+    const fetchLeaveHistory = async () => {
+        try {
+            setLoadingLeaveHistory(true);
+            const response = await fetch(`${APPS_SCRIPT_URL}?sheet=Checklist&action=fetch`);
+            if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+            const text = await response.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch {
+                const jsonStart = text.indexOf("{");
+                const jsonEnd = text.lastIndexOf("}");
+                if (jsonStart !== -1 && jsonEnd !== -1) {
+                    data = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+                } else {
+                    throw new Error("Invalid JSON response");
+                }
+            }
+
+            let rows = [];
+            if (data.table && data.table.rows) {
+                rows = data.table.rows;
+            } else if (Array.isArray(data)) {
+                rows = data;
+            } else if (data.values) {
+                rows = data.values.map((row) => ({
+                    c: row.map((val) => ({ v: val })),
+                }));
+            }
+
+            const leaves = [];
+            rows.forEach((row, rowIndex) => {
+                if (rowIndex === 0) return;
+                let rowValues = [];
+                if (row.c) {
+                    rowValues = row.c.map(cell => cell && cell.v !== undefined ? cell.v : "");
+                } else if (Array.isArray(row)) {
+                    rowValues = row;
+                } else return;
+
+                const status = (rowValues[12] || "").toString().trim();
+                const remarks = (rowValues[13] || "").toString().trim();
+                
+                if (status === "Leave" || remarks.startsWith("Leave:")) {
+                    let formattedTimestamp = rowValues[0] || "-";
+                    if (formattedTimestamp !== "-") {
+                        try {
+                            const date = new Date(formattedTimestamp);
+                            if (!isNaN(date.getTime())) {
+                                const pad = (n) => n.toString().padStart(2, '0');
+                                formattedTimestamp = `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+                            }
+                        } catch(e) {}
+                    }
+
+                    leaves.push({
+                        id: `leave-${rowIndex}`,
+                        username: rowValues[4] || "-",
+                        taskId: rowValues[1] || "-",
+                        department: rowValues[2] || "-",
+                        actionDate: rowValues[6] || "-",
+                        remarks: remarks,
+                        status: status,
+                        timestamp: formattedTimestamp
+                    });
+                }
+            });
+            
+            setLeaveHistory(leaves.reverse());
+        } catch (error) {
+            console.error("Error fetching leave history:", error);
+            showToast("Failed to fetch leave history.", "error");
+        } finally {
+            setLoadingLeaveHistory(false);
         }
     };
 
@@ -1029,15 +1116,38 @@ const Settings = () => {
                     )}
 
                     {activeTab === "leave" && (
-                        <>
-                            {/* Leave / Unique Tasks Header */}
-                            {/* <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-purple-500 px-5 py-3">
-                                <h2 className="text-sm font-bold text-white">All Unique Tasks</h2>
-                                <p className="text-[11px] text-blue-100 mt-0.5">Showing all unique tasks from checklist</p>
-                            </div> */}
-
-                            {loadingUnique ? (
-                                <div className="flex items-center justify-center py-20">
+                        <div className="p-5">
+                            {/* Leave Management Header with Sub-tabs */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between mb-5 gap-3">
+                                <h2 className="text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 text-transparent bg-clip-text flex items-center gap-2">
+                                    Leave Management
+                                </h2>
+                                <div className="flex bg-gray-100 rounded-lg p-0.5">
+                                    <button
+                                        onClick={() => setLeaveSubTab("assign")}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${leaveSubTab === "assign"
+                                            ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+                                            : "text-gray-600 hover:text-gray-800"
+                                            }`}
+                                    >
+                                        Assign Leave
+                                    </button>
+                                    <button
+                                        onClick={() => setLeaveSubTab("history")}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${leaveSubTab === "history"
+                                            ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+                                            : "text-gray-600 hover:text-gray-800"
+                                            }`}
+                                    >
+                                        Leave History
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {leaveSubTab === "assign" ? (
+                                <>
+                                    {loadingUnique ? (
+                                        <div className="flex items-center justify-center py-20">
                                     <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
                                     <span className="ml-3 text-gray-500 font-medium">Loading unique tasks...</span>
                                 </div>
@@ -1154,6 +1264,105 @@ const Settings = () => {
                                 </>
                             )}
                         </>
+                    ) : (
+                        <div>
+                                    {/* Leave History Filter */}
+                                    <div className="mb-4">
+                                        <div className="relative w-full md:w-64">
+                                            <div className="relative">
+                                                <select
+                                                    value={leaveHistoryFilter}
+                                                    onChange={(e) => setLeaveHistoryFilter(e.target.value)}
+                                                    className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white appearance-none transition-all hover:border-blue-300 shadow-sm font-medium text-gray-700"
+                                                >
+                                                    <option value="">All Members</option>
+                                                    {[...new Set(leaveHistory.map(item => item.username))].sort().map((name, idx) => (
+                                                        <option key={idx} value={name}>{name}</option>
+                                                    ))}
+                                                </select>
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                    <Search className="w-4 h-4 text-gray-400" />
+                                                </div>
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                    <ChevronDown className="w-4 h-4 text-blue-500" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {loadingLeaveHistory ? (
+                                        <div className="flex items-center justify-center py-20">
+                                            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                                            <span className="ml-3 text-gray-500 font-medium">Loading leave history...</span>
+                                        </div>
+                                    ) : (
+                                        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                                            <table className="w-full text-sm text-left text-gray-500 hidden md:table">
+                                                <thead className="text-xs text-gray-700 bg-gray-50 border-b">
+                                                    <tr>
+                                                        <th className="px-6 py-3">Timestamp</th>
+                                                        <th className="px-6 py-3">Employee Name</th>
+                                                        <th className="px-6 py-3">Department</th>
+                                                        <th className="px-6 py-3">Task ID</th>
+                                                        <th className="px-6 py-3">Action Date</th>
+                                                        <th className="px-6 py-3">Remarks</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {(() => {
+                                                        const filteredLeaveHist = leaveHistory.filter(h => 
+                                                            !leaveHistoryFilter || h.username === leaveHistoryFilter
+                                                        );
+                                                        if (filteredLeaveHist.length === 0) return (
+                                                            <tr>
+                                                                <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
+                                                                    No leave history found.
+                                                                </td>
+                                                            </tr>
+                                                        );
+
+                                                        return filteredLeaveHist.map((hist, idx) => (
+                                                            <tr key={idx} className="bg-white border-b hover:bg-gray-50">
+                                                                <td className="px-6 py-4">{hist.timestamp}</td>
+                                                                <td className="px-6 py-4 font-medium text-gray-900">{hist.username}</td>
+                                                                <td className="px-6 py-4">{hist.department}</td>
+                                                                <td className="px-6 py-4">{hist.taskId}</td>
+                                                                <td className="px-6 py-4 whitespace-nowrap">{hist.actionDate}</td>
+                                                                <td className="px-6 py-4">{hist.remarks}</td>
+                                                            </tr>
+                                                        ));
+                                                    })()}
+                                                </tbody>
+                                            </table>
+                                            
+                                            {/* Mobile View for Leave History */}
+                                            <div className="md:hidden divide-y divide-gray-100">
+                                                {(() => {
+                                                    const filteredLeaveHist = leaveHistory.filter(h => 
+                                                        !leaveHistoryFilter || h.username === leaveHistoryFilter
+                                                    );
+                                                    if (filteredLeaveHist.length === 0) return (
+                                                        <div className="py-8 text-center text-gray-400">No leave history found.</div>
+                                                    );
+
+                                                    return filteredLeaveHist.map((hist, idx) => (
+                                                        <div key={idx} className="p-4 bg-white">
+                                                            <div className="font-semibold text-gray-800">{hist.username}</div>
+                                                            <div className="text-xs text-gray-500 mt-1">Status: {hist.status}</div>
+                                                            <div className="text-sm mt-2"><span className="font-medium">Remarks:</span> {hist.remarks}</div>
+                                                            <div className="text-xs text-gray-400 flex justify-between mt-2 pt-2 border-t border-gray-50">
+                                                                <span>{hist.timestamp}</span>
+                                                                <span>{hist.department}</span>
+                                                            </div>
+                                                        </div>
+                                                    ));
+                                                })()}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     {/* ===== LEAVE TRANSFER MODAL ===== */}
