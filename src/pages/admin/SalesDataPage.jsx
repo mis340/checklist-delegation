@@ -2064,17 +2064,13 @@ function AccountDataPage() {
                   </table>
                 </div>
 
-                {/* Infinite Scroll Loader */}
+                {/* Invisible Infinite Scroll Trigger */}
                 {filteredHistoryData.length > visibleHistoryLimit && (
                   <div
                     ref={loaderRef}
-                    className="p-3 flex items-center justify-center border-t border-purple-100 bg-purple-50/20"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-purple-700 text-sm font-medium animate-pulse">Loading...</span>
-                    </div>
-                  </div>
+                    className="h-4 bg-transparent border-t border-purple-100"
+                    aria-hidden="true"
+                  />
                 )}
                 
                 {filteredHistoryData.length > 0 && filteredHistoryData.length <= visibleHistoryLimit && (
