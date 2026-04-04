@@ -251,7 +251,7 @@ const Settings = () => {
                 const status = (rowValues[12] || "").toString().trim();
                 const remarks = (rowValues[13] || "").toString().trim();
                 
-                if (status === "Leave" || remarks.startsWith("Leave:")) {
+                if (status === "Leave" || remarks.toLowerCase().includes("leave")) {
                     let formattedTimestamp = rowValues[0] || "-";
                     if (formattedTimestamp !== "-") {
                         try {
@@ -353,6 +353,9 @@ const Settings = () => {
                 const columnKValue = (rowValues[10] || "").toString().trim();
                 const isColumnKEmpty = columnKValue === "";
                 const remarks = (rowValues[13] || "").toString().toLowerCase();
+
+                // Skip tasks that already have leave remarks
+                if (remarks.includes("leave")) return;
 
                 // Show all tasks for this user (user requested "all task shows")
                 if (assignedTo.toLowerCase() === userName.toLowerCase().trim()) {
@@ -458,7 +461,7 @@ const Settings = () => {
                 return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
             };
 
-            const remarkText = `Leave: ${formatLeaveDate(leaveStartDate)} to ${formatLeaveDate(leaveEndDate)}`;
+            const remarkText = `( Leave: ${formatLeaveDate(leaveStartDate)} to ${formatLeaveDate(leaveEndDate)} )`;
 
             const now = new Date();
             const actualTimestamp = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
@@ -467,8 +470,7 @@ const Settings = () => {
                 taskId: task.taskId,
                 rowIndex: task.rowIndex,
                 remarks: remarkText,
-                status: "Leave", // Optional: explicitly set status to "Leave" as well
-                actualDate: actualTimestamp, // This maps to Column K (index-10) in the backend updateTaskData function
+                // status and actualDate removed as per request to only update remarks
             }));
 
             console.log("Submitting Leave Remarks:", submissionData);
@@ -1146,6 +1148,30 @@ const Settings = () => {
                             
                             {leaveSubTab === "assign" ? (
                                 <>
+                                    {/* Name Filter Dropdown for Assign Leave */}
+                                    <div className="mb-4">
+                                        <div className="relative w-full md:w-64">
+                                            <div className="relative">
+                                                <select
+                                                    value={leaveFilter}
+                                                    onChange={(e) => setLeaveFilter(e.target.value)}
+                                                    className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white appearance-none transition-all hover:border-blue-300 shadow-sm font-medium text-gray-700"
+                                                >
+                                                    <option value="">All Names</option>
+                                                    {[...new Set(uniqueTasks.map(t => t.name))].sort().filter(n => n).map((name, idx) => (
+                                                        <option key={idx} value={name}>{name}</option>
+                                                    ))}
+                                                </select>
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                    <Search className="w-4 h-4 text-gray-400" />
+                                                </div>
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                    <ChevronDown className="w-4 h-4 text-blue-500" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {loadingUnique ? (
                                         <div className="flex items-center justify-center py-20">
                                     <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
@@ -1171,20 +1197,17 @@ const Settings = () => {
                                             <tbody className="divide-y divide-gray-100">
                                                 {(() => {
                                                     const seen = new Set();
-                                                    const filtered = uniqueTasks.filter(t =>
-                                                        !leaveFilter ||
-                                                        t.name.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                        t.department.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                        t.taskDescription.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                        t.taskId.toLowerCase().includes(leaveFilter.toLowerCase())
-                                                    );
-                                                    const deduplicated = filtered.filter(t => {
+                                                    const deduplicated = uniqueTasks.filter(t => {
                                                         if (seen.has(t.name)) return false;
                                                         seen.add(t.name);
                                                         return true;
                                                     });
+                                                    
+                                                    const filtered = deduplicated.filter(t =>
+                                                        !leaveFilter || t.name === leaveFilter
+                                                    );
 
-                                                    if (deduplicated.length === 0) {
+                                                    if (filtered.length === 0) {
                                                         return (
                                                             <tr>
                                                                 <td colSpan={4} className="px-4 py-10 text-center text-gray-400">
@@ -1195,7 +1218,7 @@ const Settings = () => {
                                                         );
                                                     }
 
-                                                    return deduplicated.map((task, index) => (
+                                                    return filtered.map((task, index) => (
                                                         <tr key={index} className="hover:bg-blue-50/30 transition-colors">
                                                             <td className="px-3 py-2 text-center">
                                                                 <input
@@ -1219,19 +1242,17 @@ const Settings = () => {
                                     <div className="md:hidden divide-y divide-gray-100">
                                         {(() => {
                                             const seen = new Set();
-                                            const filtered = uniqueTasks.filter(t =>
-                                                !leaveFilter ||
-                                                t.name.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                t.department.toLowerCase().includes(leaveFilter.toLowerCase()) ||
-                                                t.taskDescription.toLowerCase().includes(leaveFilter.toLowerCase())
-                                            );
-                                            const deduplicated = filtered.filter(t => {
+                                            const deduplicated = uniqueTasks.filter(t => {
                                                 if (seen.has(t.name)) return false;
                                                 seen.add(t.name);
                                                 return true;
                                             });
+                                            
+                                            const filtered = deduplicated.filter(t =>
+                                                !leaveFilter || t.name === leaveFilter
+                                            );
 
-                                            if (deduplicated.length === 0) {
+                                            if (filtered.length === 0) {
                                                 return (
                                                     <div className="text-center py-10 text-gray-400">
                                                         <ClipboardList className="w-8 h-8 mx-auto mb-2 text-gray-300" />
@@ -1240,7 +1261,7 @@ const Settings = () => {
                                                 );
                                             }
 
-                                            return deduplicated.map((task, index) => (
+                                            return filtered.map((task, index) => (
                                                 <div key={index} className="px-4 py-3">
                                                     <div className="flex items-start gap-3">
                                                         <input
@@ -1266,105 +1287,112 @@ const Settings = () => {
                         </>
                     ) : (
                         <div>
-                                    {/* Leave History Filter */}
-                                    <div className="mb-4">
-                                        <div className="relative w-full md:w-64">
-                                            <div className="relative">
-                                                <select
-                                                    value={leaveHistoryFilter}
-                                                    onChange={(e) => setLeaveHistoryFilter(e.target.value)}
-                                                    className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white appearance-none transition-all hover:border-blue-300 shadow-sm font-medium text-gray-700"
-                                                >
-                                                    <option value="">All Members</option>
-                                                    {[...new Set(leaveHistory.map(item => item.username))].sort().map((name, idx) => (
-                                                        <option key={idx} value={name}>{name}</option>
-                                                    ))}
-                                                </select>
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                                                    <Search className="w-4 h-4 text-gray-400" />
-                                                </div>
-                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                                                    <ChevronDown className="w-4 h-4 text-blue-500" />
-                                                </div>
-                                            </div>
+                            {/* Leave History Filter */}
+                            <div className="mb-4">
+                                <div className="relative w-full md:w-64">
+                                    <div className="relative">
+                                        <select
+                                            value={leaveHistoryFilter}
+                                            onChange={(e) => setLeaveHistoryFilter(e.target.value)}
+                                            className="w-full pl-10 pr-10 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white appearance-none transition-all hover:border-blue-300 shadow-sm font-medium text-gray-700"
+                                        >
+                                            <option value="">All Members</option>
+                                            {[...new Set(leaveHistory.map(item => item.username))].sort().map((name, idx) => (
+                                                <option key={idx} value={name}>{name}</option>
+                                            ))}
+                                        </select>
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                                            <Users className="w-4 h-4 text-gray-400" />
+                                        </div>
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            <ChevronDown className="w-4 h-4 text-gray-400" />
                                         </div>
                                     </div>
-                                    
-                                    {loadingLeaveHistory ? (
-                                        <div className="flex items-center justify-center py-20">
-                                            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                                            <span className="ml-3 text-gray-500 font-medium">Loading leave history...</span>
-                                        </div>
-                                    ) : (
-                                        <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                                            <table className="w-full text-sm text-left text-gray-500 hidden md:table">
-                                                <thead className="text-xs text-gray-700 bg-gray-50 border-b">
+                                </div>
+                            </div>
+
+                            {loadingLeaveHistory ? (
+                                <div className="flex flex-col items-center justify-center py-24 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                                    <Loader2 className="w-10 h-10 text-blue-500 animate-spin mb-3" />
+                                    <p className="text-gray-500 font-medium">Fetching history...</p>
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto overflow-y-auto max-h-[65vh] border border-gray-100 rounded-lg shadow-sm bg-white">
+                                    <table className="w-full text-sm text-left text-gray-600 hidden md:table relative">
+                                        <thead className="text-xs text-gray-500 bg-white sticky top-0 z-10 shadow-sm">
+                                            <tr>
+                                                <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider border-b border-gray-100">Date</th>
+                                                <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider border-b border-gray-100">Employee Name</th>
+                                                <th className="px-6 py-4 text-left font-semibold uppercase tracking-wider border-b border-gray-100">Leave Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(() => {
+                                                const seen = new Set();
+                                                const filteredLeaveHist = leaveHistory.filter(h => 
+                                                    !leaveHistoryFilter || h.username === leaveHistoryFilter
+                                                ).filter(h => {
+                                                    const key = `${h.username}_${h.remarks}`;
+                                                    if (seen.has(key)) return false;
+                                                    seen.add(key);
+                                                    return true;
+                                                });
+                                                
+                                                if (filteredLeaveHist.length === 0) return (
                                                     <tr>
-                                                        <th className="px-6 py-3">Timestamp</th>
-                                                        <th className="px-6 py-3">Employee Name</th>
-                                                        <th className="px-6 py-3">Department</th>
-                                                        <th className="px-6 py-3">Task ID</th>
-                                                        <th className="px-6 py-3">Action Date</th>
-                                                        <th className="px-6 py-3">Remarks</th>
+                                                        <td colSpan={3} className="px-6 py-8 text-center text-gray-400 font-medium">
+                                                            No unique leave history found.
+                                                        </td>
                                                     </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {(() => {
-                                                        const filteredLeaveHist = leaveHistory.filter(h => 
-                                                            !leaveHistoryFilter || h.username === leaveHistoryFilter
-                                                        );
-                                                        if (filteredLeaveHist.length === 0) return (
-                                                            <tr>
-                                                                <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
-                                                                    No leave history found.
-                                                                </td>
-                                                            </tr>
-                                                        );
+                                                );
 
-                                                        return filteredLeaveHist.map((hist, idx) => (
-                                                            <tr key={idx} className="bg-white border-b hover:bg-gray-50">
-                                                                <td className="px-6 py-4">{hist.timestamp}</td>
-                                                                <td className="px-6 py-4 font-medium text-gray-900">{hist.username}</td>
-                                                                <td className="px-6 py-4">{hist.department}</td>
-                                                                <td className="px-6 py-4">{hist.taskId}</td>
-                                                                <td className="px-6 py-4 whitespace-nowrap">{hist.actionDate}</td>
-                                                                <td className="px-6 py-4">{hist.remarks}</td>
-                                                            </tr>
-                                                        ));
-                                                    })()}
-                                                </tbody>
-                                            </table>
-                                            
-                                            {/* Mobile View for Leave History */}
-                                            <div className="md:hidden divide-y divide-gray-100">
-                                                {(() => {
-                                                    const filteredLeaveHist = leaveHistory.filter(h => 
-                                                        !leaveHistoryFilter || h.username === leaveHistoryFilter
-                                                    );
-                                                    if (filteredLeaveHist.length === 0) return (
-                                                        <div className="py-8 text-center text-gray-400">No leave history found.</div>
-                                                    );
+                                                return filteredLeaveHist.map((hist, idx) => (
+                                                    <tr key={idx} className="bg-white border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                                                        <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-700">{hist.timestamp}</td>
+                                                        <td className="px-6 py-4 font-semibold text-gray-700">{hist.username}</td>
+                                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">{hist.remarks}</td>
+                                                    </tr>
+                                                ));
+                                            })()}
+                                        </tbody>
+                                    </table>
+                                    
+                                    {/* Mobile View for Leave History */}
+                                    <div className="md:hidden divide-y divide-gray-100 bg-white">
+                                        {(() => {
+                                            const seen = new Set();
+                                            const filteredLeaveHist = leaveHistory.filter(h => 
+                                                !leaveHistoryFilter || h.username === leaveHistoryFilter
+                                            ).filter(h => {
+                                                const key = `${h.username}_${h.remarks}`;
+                                                if (seen.has(key)) return false;
+                                                seen.add(key);
+                                                return true;
+                                            });
 
-                                                    return filteredLeaveHist.map((hist, idx) => (
-                                                        <div key={idx} className="p-4 bg-white">
-                                                            <div className="font-semibold text-gray-800">{hist.username}</div>
-                                                            <div className="text-xs text-gray-500 mt-1">Status: {hist.status}</div>
-                                                            <div className="text-sm mt-2"><span className="font-medium">Remarks:</span> {hist.remarks}</div>
-                                                            <div className="text-xs text-gray-400 flex justify-between mt-2 pt-2 border-t border-gray-50">
-                                                                <span>{hist.timestamp}</span>
-                                                                <span>{hist.department}</span>
-                                                            </div>
-                                                        </div>
-                                                    ));
-                                                })()}
-                                            </div>
-                                        </div>
-                                    )}
+                                            if (filteredLeaveHist.length === 0) return (
+                                                <div className="py-12 text-center text-gray-400 font-medium">No unique leave history found.</div>
+                                            );
+
+                                            return filteredLeaveHist.map((hist, idx) => (
+                                                <div key={idx} className="p-5 bg-white hover:bg-gray-50/50 transition-colors">
+                                                    <div className="flex justify-between items-center mb-3">
+                                                        <div className="font-semibold text-gray-700">{hist.username}</div>
+                                                        <div className="font-medium text-sm text-gray-600">{hist.timestamp}</div>
+                                                    </div>
+                                                    <div className="text-sm font-medium text-gray-900">
+                                                        {hist.remarks}
+                                                    </div>
+                                                </div>
+                                            ));
+                                        })()}
+                                    </div>
                                 </div>
                             )}
                         </div>
                     )}
-
+                </div>
+            )}
                     {/* ===== LEAVE TRANSFER MODAL ===== */}
                     {showLeaveModal && leaveModalUser && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">

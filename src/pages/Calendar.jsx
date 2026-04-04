@@ -69,7 +69,7 @@ const freqMapKey = (freq) => {
   return "oneTime";
 };
 
-const normalize = (val) => (val || "").trim().toLowerCase();
+const normalize = (val) => (val == null ? "" : String(val)).trim().toLowerCase();
 
 // Helper to get dates from today to last working date
 const getDatesFromTodayToLastWorkingDate = (workingDates) => {
@@ -207,7 +207,10 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
   // --- Pending filter ---
   const filterPendingTasks = useCallback((tasks) => {
     if (!tasks || tasks.length === 0) return [];
-    return tasks.filter((t) => normalize(t.status || "") !== "done");
+    return tasks.filter((t) => 
+      normalize(t.status || "") !== "done" && 
+      !normalize(t.remarks || "").includes("leave")
+    );
   }, []);
 
   // NEW: Name filter function

@@ -624,8 +624,8 @@ function AccountDataPage() {
         if (isColumnKEmpty && isEmpty(columnPValue) && !isLeave) {
           pendingAccounts.push(rowData);
         }
-        // For history view, include tasks where Column K is NOT empty
-        else if (!isColumnKEmpty) {
+        // For history view, include tasks where Column K is NOT empty, but STILL HIDE leave tasks
+        else if (!isColumnKEmpty && !isLeave) {
           const isUserHistoryMatch =
             currentUserRole === "admin" ||
             assignedTo.toLowerCase() === currentUsername.toLowerCase();
