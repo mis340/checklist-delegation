@@ -1531,12 +1531,6 @@ const Settings = () => {
                                         )}
                                     </div>
 
-                                    {/* Note */}
-                                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-                                        <p className="text-xs text-blue-700">
-                                            <strong>Note:</strong> Selected tasks will be marked with the leave remark in the Checklist sheet (Column N) for <strong>{leaveModalUser.name}</strong>.
-                                        </p>
-                                    </div>
                                 </div>
 
                                 {/* Footer — always visible */}

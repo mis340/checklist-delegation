@@ -12,6 +12,7 @@ const freqColors = {
   weekly: "#38bdf8",
   monthly: "#f59e42",
   oneTime: "#10b981",
+  leave: "#ef4444", // Red for leave
 };
 
 const freqLabels = {
@@ -19,6 +20,24 @@ const freqLabels = {
   weekly: "Weekly Tasks",
   monthly: "Monthly Tasks",
   oneTime: "One-Time Tasks",
+  leave: "Leave Tasks", // Label for leave
+};
+
+// --- Calendar Event Colors ---
+const EVENT_COLORS = {
+  leave: "#ef4444",   // Red
+  holiday: "#f59e0b", // Yellow
+  task: "#10b981",    // Green
+};
+
+const HOLIDAY_LIST_2026 = {
+  "26/01/2026": "Republic Day",
+  "04/03/2026": "Holi",
+  "15/08/2026": "Independence Day",
+  "20/10/2026": "Dussehra",
+  "08/11/2026": "Diwali",
+  "09/11/2026": "Govardhan Puja",
+  "07/02/2026": "Family exigencies",
 };
 
 // Sheet Type Colors - D for Delegation (Blue), C for Checklist (Green)
@@ -28,15 +47,40 @@ const sheetColors = {
 };
 
 // --- Date helpers ---
+const toYMD = (d) => {
+  if (!d) return "";
+  const date = toDate(d);
+  if (!date) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatIfDate = (val) => {
+  if (!val || typeof val !== "string") return val;
+  // Check if it looks like an ISO date or long date string
+  if (val.match(/^\d{4}-\d{2}-\d{2}T/) || (val.includes(":") && !isNaN(Date.parse(val)))) {
+    const d = toDate(val);
+    if (d) return formatDate(d);
+  }
+  return val;
+};
+
 const toDate = (d) => {
   if (!d) return null;
   if (d instanceof Date) return d;
   if (typeof d === "number") return new Date(d);
   if (typeof d === "string") {
+    // Try DD/MM/YYYY regex first to prevent Date.parse from guessing wrong
+    let m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      // Create local date using constructor
+      return new Date(parseInt(m[3]), parseInt(m[2]) - 1, parseInt(m[1]));
+    }
+
     let t = Date.parse(d);
     if (!isNaN(t)) return new Date(t);
-    let m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}`);
   }
   return null;
 };
@@ -207,9 +251,8 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
   // --- Pending filter ---
   const filterPendingTasks = useCallback((tasks) => {
     if (!tasks || tasks.length === 0) return [];
-    return tasks.filter((t) => 
-      normalize(t.status || "") !== "done" && 
-      !normalize(t.remarks || "").includes("leave")
+    return tasks.filter((t) =>
+      normalize(t.status || "") !== "done"
     );
   }, []);
 
@@ -233,6 +276,26 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
       pending,
       completed,
     });
+  };
+
+  // --- Data transform for Checklist sheet tasks ---
+  const transformChecklistToTasks = (rows) => {
+    if (!rows || rows.length === 0) return [];
+    let leaves = [];
+    for (let i = 1; i < rows.length; i++) {
+        const c = rows[i].c || [];
+        if (!c[1]?.v && !c[4]?.v) continue; // Skip if no taskId or name
+
+        leaves.push({
+            taskId: String(c[1]?.v || ""),
+            name: String(c[4]?.v || ""),
+            description: String(c[5]?.v || ""), // Column F
+            date: c[6]?.v || "",
+            status: String(c[12]?.v || ""),
+            remarks: String(c[13]?.v || "")
+        });
+    }
+    return leaves;
   };
 
   // --- Data transform for Unique sheet ---
@@ -283,10 +346,53 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
   };
 
   // --- Main build: Create combined events from today to last working date ---
-  const generateCombinedDateMap = (uniqueTasks, workingDates) => {
+  const generateCombinedDateMap = (uniqueTasks, workingDates, checklistTasks = []) => {
     let map = {};
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    // Create lookups for Checklist entries
+    const dayExecutionLookup = {}; // Key: dateStr | taskId
+    const dayNameDescLookup = {};  // Key: dateStr | name | description
+
+    checklistTasks.forEach(item => {
+        const d = toDate(item.date);
+        if (d) {
+            const dateStr = toYMD(d);
+            if (item.taskId) {
+                dayExecutionLookup[`${dateStr}|${item.taskId}`] = item;
+            }
+            // Always store in name-desc lookup as fallback
+            const nameDescKey = `${dateStr}|${normalize(item.name)}|${normalize(item.description)}`;
+            dayNameDescLookup[nameDescKey] = item;
+        }
+    });
+
+    // Helper to find daily checklist entry for a task
+    const findExecutionData = (dateStr, task) => {
+        // Priority 1: Task ID match
+        let match = dayExecutionLookup[`${dateStr}|${task.taskId}`];
+        // Priority 2: Name + Description match
+        if (!match) {
+            const nameDescKey = `${dateStr}|${normalize(task.name)}|${normalize(task.description)}`;
+            match = dayNameDescLookup[nameDescKey];
+        }
+        return match;
+    };
+
+    // Determine if a specific date/task is a leave
+    const isLeaveCheck = (dateStr, task) => {
+        const lookupItem = findExecutionData(dateStr, task);
+        if (lookupItem) {
+            const status = normalize(lookupItem.status);
+            const remarks = normalize(lookupItem.remarks);
+            const desc = normalize(lookupItem.description);
+            if (status === "leave" || remarks.includes("leave") || desc.includes("leave")) return true;
+        }
+        // Fallback to master remarks/desc
+        if (normalize(task.remarks).includes("leave") || normalize(task.description).includes("leave")) return true;
+        return false;
+    };
 
     // Get the last working date
     const lastDate = getLastWorkingDate(workingDates);
@@ -313,7 +419,7 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
       );
 
       for (const occurrenceDate of occurrences) {
-        const dateStr = occurrenceDate.toISOString().slice(0, 10);
+        const dateStr = toYMD(occurrenceDate);
 
         if (!map[dateStr]) {
           map[dateStr] = {
@@ -322,20 +428,90 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
           };
         }
 
+        // Check if this task is a leave for this specific date
+        const isLeave = isLeaveCheck(dateStr, task);
+        const taskType = isLeave ? "leave" : "task";
+
+        // Enrich recurring task with specific data from the Checklist for this date
+        const executionData = findExecutionData(dateStr, task);
+        
         const taskWithTime = {
           ...task,
+          status: executionData?.status || task.status,
+          remarks: executionData?.remarks || task.remarks,
           displayDate: dateStr,
           occurrenceDate: occurrenceDate,
+          calendarType: taskType,
         };
         map[dateStr].tasks.push(taskWithTime);
 
         const timeKey = task.time || "no-time";
-        if (!map[dateStr].tasksByTime[timeKey]) {
-          map[dateStr].tasksByTime[timeKey] = [];
+        const groupKey = `${timeKey}|${taskType}`;
+        if (!map[dateStr].tasksByTime[groupKey]) {
+          map[dateStr].tasksByTime[groupKey] = [];
         }
-        map[dateStr].tasksByTime[timeKey].push(taskWithTime);
+        map[dateStr].tasksByTime[groupKey].push(taskWithTime);
       }
     }
+    
+    // 2. Process Standalone leaves from Checklist (that might not be in Unique tasks)
+    checklistTasks.forEach(item => {
+        const status = normalize(item.status);
+        const remarks = normalize(item.remarks);
+        const desc = normalize(item.description);
+        
+        if (status === "leave" || remarks.includes("leave") || desc.includes("leave")) {
+            const d = toDate(item.date);
+            if (!d) return;
+            const dateStr = toYMD(d);
+            
+            if (!map[dateStr]) {
+                map[dateStr] = { tasks: [], tasksByTime: {} };
+            }
+
+            // Deduplication: Check if we already have this specific entry (either as a processed recurring task or a previous checklist row)
+            const alreadyExists = map[dateStr].tasks.some(t => 
+                (item.taskId && t.taskId === item.taskId) || (normalize(t.name) === normalize(item.name) && normalize(t.description) === normalize(item.description))
+            );
+            
+            if (!alreadyExists) {
+                const leaveTask = {
+                    taskId: item.taskId || `L-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+                    name: item.name,
+                    description: item.description || "General Leave",
+                    startDate: d,
+                    occurrenceDate: d,
+                    calendarType: "leave",
+                    status: item.status,
+                    remarks: item.remarks,
+                    displayDate: dateStr,
+                    time: "no-time"
+                };
+
+                // Respect the Name Filter
+                if (selectedNameFilter === "all" || normalize(leaveTask.name) === normalize(selectedNameFilter)) {
+                    map[dateStr].tasks.push(leaveTask);
+                    const groupKey = "no-time|leave";
+                    if (!map[dateStr].tasksByTime[groupKey]) {
+                        map[dateStr].tasksByTime[groupKey] = [];
+                    }
+                    map[dateStr].tasksByTime[groupKey].push(leaveTask);
+                }
+            }
+        }
+    });
+
+    // Process Holidays
+    Object.keys(HOLIDAY_LIST_2026).forEach((hDateStr) => {
+      const hDate = toDate(hDateStr);
+      if (!hDate) return;
+      const dateStr = toYMD(hDate);
+      if (!map[dateStr]) {
+        map[dateStr] = { tasks: [], tasksByTime: {} };
+      }
+      map[dateStr].isHoliday = true;
+      map[dateStr].holidayReason = HOLIDAY_LIST_2026[hDateStr];
+    });
 
     return map;
   };
@@ -397,15 +573,30 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
         uniqueTasks = transformToTasks(uniqueResponse.data.table.rows);
       }
 
+      // Step 3: Fetch Checklist sheet tasks (to detect leaves)
+      const checklistResponse = await axios.get(
+        `${BACKEND_URL}?sheet=Checklist&action=fetch`,
+        { timeout: 30000 }
+      );
+      if (!isMounted) return;
+      let checklistTasks = [];
+      if (
+        checklistResponse.data &&
+        checklistResponse.data.table &&
+        checklistResponse.data.table.rows
+      ) {
+        checklistTasks = transformChecklistToTasks(checklistResponse.data.table.rows);
+      }
+
       // NEW: Extract unique names for dropdown
       const names = extractUniqueNames(uniqueTasks);
       setAvailableNames(names);
 
-      // Step 3: Calculate stats
+      // Step 4: Calculate stats
       calculateStats(uniqueTasks);
 
-      // Step 4: Build combined per-date map from today to last working date
-      const map = generateCombinedDateMap(uniqueTasks, allDates);
+      // Step 5: Build combined per-date map from today to last working date
+      const map = generateCombinedDateMap(uniqueTasks, allDates, checklistTasks);
       setDateDataMap(map);
 
       // Create events with proper time slots
@@ -414,11 +605,13 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
         const dayData = map[dateStr];
         const tasksByTime = dayData.tasksByTime || {};
 
-        Object.keys(tasksByTime).forEach((timeKey) => {
-          const tasksAtTime = tasksByTime[timeKey];
+        Object.keys(tasksByTime).forEach((groupKey) => {
+          const tasksAtTime = tasksByTime[groupKey];
           const taskCount = tasksAtTime.length || 0;
 
           if (taskCount === 0) return;
+
+          const [timeKey, taskType] = groupKey.split("|");
 
           // Parse time
           let eventStart = dateStr;
@@ -466,20 +659,39 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
           }
 
           eventsArray.push({
-            id: `${dateStr}-${timeKey}`,
+            id: `${dateStr}-${groupKey}`,
             start: eventStart,
             end: isAllDay ? undefined : eventEnd,
             allDay: isAllDay,
-            title: `${taskCount} Tasks`,
+            title: taskType === "leave" ? `${taskCount} Leave` : `${taskCount} Tasks`,
             extendedProps: {
               dateStr: dateStr,
               timeKey: timeKey,
               taskCount: taskCount,
               tasks: tasksAtTime,
+              taskType: taskType,
             },
-            backgroundColor: freqColors.oneTime, // Default color
+            backgroundColor: EVENT_COLORS[taskType] || EVENT_COLORS.task,
           });
         });
+
+        // Add Holiday event
+        if (dayData.isHoliday) {
+          eventsArray.push({
+            id: `${dateStr}-holiday`,
+            start: dateStr,
+            allDay: true,
+            title: dayData.holidayReason || "Holiday",
+            extendedProps: {
+              dateStr: dateStr,
+              taskType: "holiday",
+              taskCount: 0,
+              tasks: [],
+              holidayReason: dayData.holidayReason || "Holiday",
+            },
+            backgroundColor: EVENT_COLORS.holiday,
+          });
+        }
       });
 
       setEvents(eventsArray);
@@ -834,21 +1046,41 @@ const CalendarUI = ({ userRole, userName, displayName }) => {
               eventContent={(arg) => {
                 const props = arg.event.extendedProps;
                 const taskCount = props?.taskCount || 0;
+                const taskType = props?.taskType || "task";
 
-                if (taskCount === 0) return null;
+                const bgColor = EVENT_COLORS[taskType] || EVENT_COLORS.task;
+                const title = taskType === "holiday" ? (props?.holidayReason || "Holiday") :
+                  taskType === "leave" ? `${taskCount} Leave` :
+                    `${taskCount} Tasks`;
 
                 return (
                   <div className="flex items-center justify-center gap-1 p-0.5 sm:p-1 h-full w-full">
                     <div
-                      className="text-xs sm:text-sm font-bold text-white px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md shadow-sm"
-                      style={{ backgroundColor: freqColors.oneTime }}
+                      className="text-[10px] sm:text-xs font-bold text-white py-0.5 sm:py-1 rounded-full shadow-sm w-[75%] sm:w-[65%] mx-auto text-center truncate"
+                      style={{ backgroundColor: bgColor }}
                     >
-                      {taskCount} Tasks
+                      {title}
                     </div>
                   </div>
                 );
               }}
             />
+
+            {/* Color Legend */}
+            <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full shadow-sm" style={{ backgroundColor: EVENT_COLORS.task }}></div>
+                <span className="text-sm font-semibold text-gray-700">All Task</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full shadow-sm" style={{ backgroundColor: EVENT_COLORS.leave }}></div>
+                <span className="text-sm font-semibold text-gray-700">Leave Task</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 rounded-full shadow-sm" style={{ backgroundColor: EVENT_COLORS.holiday }}></div>
+                <span className="text-sm font-semibold text-gray-700">Holidays</span>
+              </div>
+            </div>
           </div>
         </div>
         {showModal && selectedEvent && (
@@ -969,15 +1201,19 @@ const TaskModal = ({
   const filteredTasks = getFilteredTasks();
   const hasTasks = filteredTasks.length > 0;
 
-  // Group tasks by frequency
+  // Group tasks by frequency or leave status
   const groupedTasks = filteredTasks.reduce((groups, task) => {
-    const freq = freqMapKey(task.freq);
-    if (!groups[freq]) {
-      groups[freq] = [];
+    const isLeave = task.calendarType === "leave" || normalize(task.remarks || "").includes("leave");
+    const groupKey = isLeave ? "leave" : freqMapKey(task.freq);
+    if (!groups[groupKey]) {
+      groups[groupKey] = [];
     }
-    groups[freq].push(task);
+    groups[groupKey].push(task);
     return groups;
   }, {});
+
+  const allTasksCount = tasksToShow.filter(t => t.calendarType !== "leave" && !normalize(t.remarks || "").includes("leave") && !normalize(t.description || "").includes("leave")).length;
+  const leaveTasksCount = tasksToShow.length - allTasksCount;
 
   // Format date for display
   const formatDateDisplay = (date) => {
@@ -1024,13 +1260,50 @@ const TaskModal = ({
             </button>
           </div>
 
+          {/* Summary Boxes */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div 
+              className="relative p-1.5 sm:p-2 rounded-xl border border-green-100 shadow-sm bg-gradient-to-br from-green-50 to-white transition-all duration-300"
+            >
+              <div className="flex items-center justify-between pl-1">
+                <div className="flex flex-col">
+                  <span className="text-[8px] sm:text-[9px] font-bold text-green-700 uppercase tracking-[0.05em] opacity-70">Active Tasks</span>
+                  <span className="text-lg sm:text-xl font-extrabold text-green-600 leading-none">{allTasksCount}</span>
+                </div>
+                <div className="w-7 h-7 rounded-lg bg-white shadow-xs flex items-center justify-center text-green-500 border border-green-50/50">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+              </div>
+              <div className="absolute top-0 left-0 w-0.5 h-full bg-green-500 rounded-l-xl"></div>
+            </div>
+
+            <div 
+              className="relative p-1.5 sm:p-2 rounded-xl border border-red-100 shadow-sm bg-gradient-to-br from-red-50 to-white transition-all duration-300"
+            >
+              <div className="flex items-center justify-between pl-1">
+                <div className="flex flex-col">
+                  <span className="text-[8px] sm:text-[9px] font-bold text-red-700 uppercase tracking-[0.05em] opacity-70">Team on Leave</span>
+                  <span className="text-lg sm:text-xl font-extrabold text-red-500 leading-none">{leaveTasksCount}</span>
+                </div>
+                <div className="w-7 h-7 rounded-lg bg-white shadow-xs flex items-center justify-center text-red-500 border border-red-50/50">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="absolute top-0 left-0 w-0.5 h-full bg-red-500 rounded-l-xl"></div>
+            </div>
+          </div>
+
           {/* Status Filter */}
           <div className="flex flex-wrap gap-2 mb-3">
             <button
               onClick={() => setStatusFilter("all")}
-              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium transition-all text-xs sm:text-sm ${statusFilter === "all"
-                  ? "bg-gray-800 text-white shadow-sm"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              className={`px-3 sm:px-4 py-1.5 rounded-full font-medium transition-all text-xs sm:text-sm ${statusFilter === "all"
+                ? "bg-gray-800 text-white shadow-sm"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
             >
               All Tasks
@@ -1153,8 +1426,8 @@ const TaskModal = ({
                             )}
                             <span
                               className={`px-2 py-1 rounded-md font-medium ${t.status === "done"
-                                  ? "bg-green-100 text-green-700"
-                                  : "bg-yellow-100 text-yellow-700"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-yellow-100 text-yellow-700"
                                 }`}
                             >
                               {t.status === "done"
@@ -1176,7 +1449,7 @@ const TaskModal = ({
                                         : "#10b981",
                                 }}
                               >
-                                {t.priority.toUpperCase()}
+                                {formatIfDate(t.priority).toUpperCase()}
                               </span>
                             )}
                           </div>
@@ -1194,7 +1467,7 @@ const TaskModal = ({
                           </div>
                           {t.remarks && (
                             <div className="mt-2 text-xs text-gray-600 italic bg-gray-50 px-2 py-1 rounded-md inline-block">
-                              💬 {t.remarks}
+                              💬 {formatIfDate(t.remarks)}
                             </div>
                           )}
                         </div>
@@ -1211,7 +1484,7 @@ const TaskModal = ({
         <div className="p-4 sm:p-6 bg-white border-t border-gray-200">
           <button
             onClick={onClose}
-            className="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-all duration-200 shadow-md hover:shadow-lg font-semibold text-sm sm:text-base"
+            className="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-800 text-white rounded-full hover:bg-gray-900 transition-all duration-200 shadow-md hover:shadow-lg font-semibold text-sm sm:text-base"
           >
             Close
           </button>

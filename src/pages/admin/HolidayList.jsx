@@ -60,22 +60,25 @@ const Holiday = () => {
   const formatDateFromSheet = (dateValue) => {
     if (!dateValue) return "";
 
-    // If it's already in DD-MM-YYYY format
-    if (typeof dateValue === "string" && dateValue.includes("-")) {
-      return dateValue;
-    }
-
-    // If it's a Date object or different format
     try {
+      // Handle the case where it might be an ISO string or other date string
       const date = new Date(dateValue);
       if (!isNaN(date.getTime())) {
         const day = String(date.getDate()).padStart(2, "0");
         const month = String(date.getMonth() + 1).padStart(2, "0");
         const year = date.getFullYear();
-        return `${day}-${month}-${year}`;
+        return `${day}/${month}/${year}`;
       }
     } catch (e) {
       console.error("Error formatting date:", e);
+    }
+
+    // Fallback search for DD-MM-YYYY or similar patterns if Date parsing fails
+    if (typeof dateValue === "string") {
+      const match = dateValue.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (match) {
+        return `${match[3]}/${match[2]}/${match[1]}`;
+      }
     }
 
     return dateValue.toString();
@@ -97,9 +100,9 @@ const Holiday = () => {
       return;
     }
 
-    // Convert date from YYYY-MM-DD to DD-MM-YYYY for sheet
+    // Convert date from YYYY-MM-DD to DD/MM/YYYY for sheet
     const [year, month, day] = formData.date.split("-");
-    const formattedDate = `${day}-${month}-${year}`;
+    const formattedDate = `${day}/${month}/${year}`;
 
     // Save in UI state first
     const updatedHolidays = [...holidays];
@@ -179,8 +182,8 @@ const Holiday = () => {
 
   const handleEdit = (index) => {
     const holiday = holidays[index];
-    // Convert DD-MM-YYYY to YYYY-MM-DD for date input
-    const [day, month, year] = holiday.date.split("-");
+    // Convert DD/MM/YYYY to YYYY-MM-DD for date input
+    const [day, month, year] = holiday.date.split("/");
     const formattedDateForInput = `${year}-${month}-${day}`;
 
     setEditIndex(index);
