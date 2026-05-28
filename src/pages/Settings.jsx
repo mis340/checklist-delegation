@@ -435,7 +435,7 @@ const Settings = () => {
         });
     })();
 
-    // Handle Leave Transfer Submit — writes remark to Column N of Checklist
+    // Handle Leave Transfer Submit — writes remark to Column N and actual time to Column K of Checklist
     const handleLeaveSubmit = async () => {
         if (selectedLeaveTasks.size === 0) {
             showToast("Please select at least one task.", "error");
@@ -470,7 +470,7 @@ const Settings = () => {
                 taskId: task.taskId,
                 rowIndex: task.rowIndex,
                 remarks: remarkText,
-                // status and actualDate removed as per request to only update remarks
+                actualDate: actualTimestamp,
             }));
 
             console.log("Submitting Leave Remarks:", submissionData);
